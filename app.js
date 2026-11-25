@@ -58,6 +58,7 @@
   const temTermo = (nome, lista) => { const n = norm(nome); return lista.some(t => n.includes(t)); };
 
   const ICON = {
+    logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 20.5H5.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h4"/><path d="M15.5 16.5 20 12l-4.5-4.5M20 12H9"/></svg>',
     cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>',
     seal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12.2 2.3 2.3 4.4-4.6"/></svg>',
     guide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v16h5.5c.8 0 1.5-.7 1.5-1.5z"/><path d="M7 8h1.5M7 11h1.5M15.5 8H17M15.5 11H17"/></svg>',
@@ -311,7 +312,8 @@
           ${marca('marca-side')}
           <nav aria-label="Seções">${NAV.map(([r, t, i]) => `<a href="#${r}" data-nav="${r}">${ICON[i]}<span>${t}</span></a>`).join('')}</nav>
           <button class="btn btn-primary cta" data-acao="nova-consulta">${ICON.plus}Nova consulta</button>
-          <div class="who"><b>${esc(nomeMedica())}</b><br><span class="wrap-any">${esc(S.user.email || '')}</span></div>
+          <div class="who"><b>${esc(nomeMedica())}</b><br><span class="wrap-any">${esc(S.user.email || '')}</span>
+            <button type="button" class="btn btn-quiet sair-btn" data-acao="sair">${ICON.logout}Sair da conta</button></div>
         </aside>
         <div>
           ${demo ? `<div class="demo-banner" role="note"><b>Modo demonstração:</b> dados de exemplo, salvos só neste navegador. Não use dados reais de pacientes.</div>` : ''}
@@ -319,6 +321,7 @@
             <a class="brand" href="#inicio" aria-label="Início"><img src="${A['logo-symbol']}" alt=""><span><b>${MARCA_NOME}</b><small>${MARCA_ESP}</small></span></a>
             <span class="spacer"></span>
             <button class="icon-btn" data-acao="nova-consulta" aria-label="Nova consulta">${ICON.plus}</button>
+            <button class="icon-btn" data-acao="sair" aria-label="Sair da conta" title="Sair da conta">${ICON.logout}</button>
           </header>
           <main id="main" class="main" tabindex="-1"></main>
         </div>
@@ -326,6 +329,12 @@
       </div>
       <div class="toasts" id="toasts" aria-live="polite"></div>`;
     $$('[data-acao="nova-consulta"]').forEach(b => b.addEventListener('click', () => dialogoNovaConsulta()));
+    $$('[data-acao="sair"]').forEach(b => b.addEventListener('click', sairDaConta));
+  }
+  async function sairDaConta() {
+    if (!(await confirmar(`Sair da conta de ${nomeMedica()}? O que estava aberto já fica salvo.`, { ok: 'Sair', titulo: 'Sair da conta' }))) return;
+    try { await salvarPendente(); } catch (e) { /* segue para sair */ }
+    await DB.auth.signOut(); S.user = null; S.pacientes = null; location.hash = ''; telaAuth();
   }
   function marcarNav(sec) { $$('[data-nav]').forEach(a => { if (a.dataset.nav === sec) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }); }
 
@@ -2306,7 +2315,7 @@
       <section class="card">
         <h2 style="font-size:1.5rem;margin-bottom:8px">Dados e segurança</h2>
         <p class="muted small">${DB.modo === 'demo' ? 'Modo demonstração: os dados ficam só neste navegador.' : `Conectado ao banco seguro (Supabase). Conta: ${esc(S.user.email)}.`} O prontuário deve ser guardado por no mínimo 20 anos (Lei 13.787/2018); baixe cópias de segurança periodicamente.</p>
-        <div class="actions" style="margin-top:12px"><button class="btn btn-ghost" data-x="backup">${ICON.download}Baixar cópia de segurança</button>${DB.modo === 'demo' ? `<button class="btn btn-quiet" data-x="reset">Restaurar dados de exemplo</button>` : ''}<button class="btn btn-danger" data-x="sair">Sair</button></div>
+        <div class="actions" style="margin-top:12px"><button class="btn btn-ghost" data-x="backup">${ICON.download}Baixar cópia de segurança</button>${DB.modo === 'demo' ? `<button class="btn btn-quiet" data-x="reset">Restaurar dados de exemplo</button>` : ''}<button class="btn btn-danger" data-x="sair">${ICON.logout}Sair da conta</button></div>
       </section>`;
     const statusAssinatura = async () => {
       const el = $('#pf-assin', main); if (!el) return;
@@ -2350,7 +2359,7 @@
         } catch (err) { falha(err); }
       });
       else if (b.dataset.x === 'reset') { if (await confirmar('Apagar tudo o que foi feito na demonstração e restaurar os dados de exemplo?', { ok: 'Restaurar', perigo: true })) { DB.limpar(); await carregarBase(); S.pacientes = null; toast('Dados de exemplo restaurados.'); location.hash = '#inicio'; } }
-      else if (b.dataset.x === 'sair') { await salvarPendente(); await DB.auth.signOut(); S.user = null; S.pacientes = null; telaAuth(); }
+      else if (b.dataset.x === 'sair') sairDaConta();
     });
   }
   /* =====================================================================

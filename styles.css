@@ -441,3 +441,11 @@ dialog.wide { width: min(980px, calc(100vw - 24px)); }
 .lista-check { list-style: none; margin: 0; padding: 0; }
 .lista-check .check { align-items: flex-start; }
 .lista-check .check input { margin-top: 4px; flex: none; }
+.sidebar .who .sair-btn { margin-top: var(--s2); padding-left: 0; min-height: 40px; color: var(--muted); }
+.sidebar .who .sair-btn:hover { color: var(--danger); }
+.sidebar .who .sair-btn svg { width: 18px; height: 18px; }
+@media (min-width: 1024px) { .topbar [data-acao="sair"] { display: none; } }
+.topbar .brand { min-width: 0; }
+.topbar .brand > span { min-width: 0; }
+.topbar .brand b, .topbar .brand small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 379px) { .topbar .brand b { font-size: 1.12rem; } .topbar .brand small { letter-spacing: .1em; font-size: .58rem; } .topbar { gap: var(--s1); } }
