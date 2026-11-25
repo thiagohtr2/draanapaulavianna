@@ -168,7 +168,7 @@
       titulo, largo: previa,
       corpo: `<div class="stack">${naoSalvo ? `<div class="alert">${ICON.alert}<p>Pré-visualização: este PDF ainda <b>não foi salvo</b> na ficha da paciente. Feche e use “Salvar e gerar PDF” para guardar.</p></div>` : ''}${avisos}
         ${previa ? `<iframe class="pdf-frame" src="${url}" title="Pré-visualização do PDF"></iframe>` : `<div class="summary-card"><b>${esc(r.nomeArquivo)}</b><p class="muted small">${r.paginas} ${r.paginas === 1 ? 'página' : 'páginas'} · pronto para imprimir, enviar ou salvar</p></div>`}
-        ${ass ? '' : `<p class="small muted">${ASSINAVEIS.includes(doc.tipo) ? 'Imprima e assine à mão. Para enviar sem imprimir, emita de novo marcando “Assinar digitalmente”.' : 'Pronto para imprimir ou enviar à paciente.'}</p>`}</div>`,
+        </div>`,
       rodape: `${podeCompartilhar ? `<button class="btn btn-ghost" data-share>${ICON.share}Enviar</button>` : ''}
         ${downloadsCap ? `<button class="btn btn-primary" data-save>${ICON.download}Baixar PDF</button>` : `<a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">${ICON.open}Abrir</a><a class="btn btn-primary" href="${url}" download="${esc(r.nomeArquivo)}">${ICON.download}Baixar PDF</a>`}`,
       aoAbrir: d => {
@@ -1207,7 +1207,7 @@
         ${ass ? `<div class="alert ${ass.teste ? '' : 'ok'}">${ICON.seal}<p>${ass.teste ? '<b>Assinatura de TESTE — sem validade jurídica.</b> Assinado' : '<b>Assinado digitalmente</b> (ICP-Brasil)'}${ass.por && ass.por.nome ? ` por ${esc(ass.por.nome)}` : ''}${ass.em ? ` em ${fmtData(ass.em)} às ${fmtHora(ass.em)}` : ''}. Código de acesso para a farmácia: <b>${esc(ass.codigo || '')}</b>. Envie o PDF pelo WhatsApp ou e-mail — não precisa imprimir.</p></div>` : ''}
         ${avisos.map(a => `<div class="alert">${ICON.alert}<p>${esc(a)}</p></div>`).join('')}
         ${previa ? `<iframe class="pdf-frame" src="${url}" title="Visualização do PDF"></iframe>` : `<div class="summary-card"><b class="wrap-any">${esc(doc.nome_arquivo)}</b><p class="muted small">${doc.paginas || ''} ${doc.paginas === 1 ? 'página' : 'páginas'} · emitido em ${quando}</p></div>`}
-        <p class="small muted">Imprima e assine, ou assine digitalmente com certificado ICP-Brasil antes de enviar.</p>
+        ${ass ? '' : `<p class="small muted">${ASSINAVEIS.includes(doc.tipo) ? 'Imprima e assine à mão. Para enviar sem imprimir, emita de novo marcando “Assinar digitalmente”.' : 'Pronto para imprimir ou enviar à paciente.'}</p>`}
         ${!novo && !doc.anulado_em ? `<p><button type="button" class="btn btn-quiet small" data-anular style="padding-left:0;color:var(--danger)">Anular este documento</button></p>` : ''}</div>`,
       rodape: `${podeCompartilhar ? `<button class="btn btn-ghost" data-share>${ICON.share}Compartilhar</button>` : ''}
         ${downloadsCap ? `<button class="btn btn-ghost" data-save>${ICON.download}Baixar</button>` : `<a class="btn btn-ghost" href="${url}" download="${esc(doc.nome_arquivo)}">${ICON.download}Baixar</a><a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">${ICON.open}Visualizar</a>`}
