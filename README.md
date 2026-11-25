@@ -51,6 +51,11 @@ Depois aponte um domínio próprio, se quiser.
   expressa da paciente (Resolução CFM 2.381/2024).
 
 ## Documentos da paciente
+- **Salvar** guarda o documento na ficha sem abrir o PDF — bom para emitir vários seguidos.
+  **Salvar e gerar PDF** guarda e já abre para imprimir ou enviar.
+- **Ver todos em um PDF** (na consulta) e **Juntar em um PDF** (na ficha) reúnem vários documentos num
+  arquivo só, na ordem de emissão, para imprimir tudo de uma vez. Para enviar, use **Enviar**: cada
+  documento vai separado (os assinados digitalmente mantêm a assinatura válida).
 - Na consulta, a seção **Documentos** emite quantos documentos forem precisos — receita, solicitação de
   exames, atestado e orientações — cada um com seu próprio editor.
 - Ao tocar em **Salvar e gerar PDF**, o documento fica guardado na ficha da paciente (aba Documentos), com
@@ -173,6 +178,7 @@ periodicamente, ou assine o plano Pro (backup diário).
 - `supabase/schema.sql` — tabelas e regras de segurança do banco (`migracao_v4.sql`: só as novidades)
 - `supabase/functions/` — `enviar-documentos` (e-mail), `assinar-documento` (assinatura ICP-Brasil), `receita` (QR Code), `_shared/pdf-assinatura.ts`
 - `vendor/qrcode.js` — gerador de QR Code (MIT, Kazuhiko Arase)
+- `vendor/pdf-lib.min.js` — junta PDFs no navegador (MIT, Andrew Dillon), carregado só quando usado
 
 ## Créditos
 Fontes Cormorant Garamond e Jost (SIL Open Font License). Bibliotecas jsPDF e supabase-js (licença MIT).

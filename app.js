@@ -185,21 +185,23 @@
   let downloadsCap = null;
   if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { downloadsCap = d; }).catch(() => {});
 
-  function mostrarPDF(r, titulo, naoSalvo) {
+  function mostrarPDF(r, titulo, naoSalvo, { imprimir = false, aviso = '' } = {}) {
     const url = URL.createObjectURL(r.blob);
     const file = typeof File === 'function' ? new File([r.blob], r.nomeArquivo, { type: 'application/pdf' }) : null;
     const podeCompartilhar = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
     const ehToque = matchMedia('(pointer: coarse)').matches;
     const previa = !ehToque && innerWidth >= 900 && !downloadsCap;
-    const avisos = (r.avisos || []).map(a => `<div class="alert">${ICON.alert}<p>${esc(a)}</p></div>`).join('');
+    const avisos = (r.avisos || []).map(a => `<div class="alert">${ICON.alert}<p>${esc(a)}</p></div>`).join('') + (aviso ? `<div class="alert info">${ICON.alert}<p>${aviso}</p></div>` : '');
     abrirDialogo({
       titulo, largo: previa,
       corpo: `<div class="stack">${naoSalvo ? `<div class="alert">${ICON.alert}<p>Pré-visualização: este PDF ainda <b>não foi salvo</b> na ficha da paciente. Feche e use “Salvar e gerar PDF” para guardar.</p></div>` : ''}${avisos}
         ${previa ? `<iframe class="pdf-frame" src="${url}" title="Pré-visualização do PDF"></iframe>` : `<div class="summary-card"><b>${esc(r.nomeArquivo)}</b><p class="muted small">${r.paginas} ${r.paginas === 1 ? 'página' : 'páginas'} · pronto para imprimir, enviar ou salvar</p></div>`}
         </div>`,
       rodape: `${podeCompartilhar ? `<button class="btn btn-ghost" data-share>${ICON.share}Enviar</button>` : ''}
-        ${downloadsCap ? `<button class="btn btn-primary" data-save>${ICON.download}Baixar PDF</button>` : `<a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">${ICON.open}Abrir</a><a class="btn btn-primary" href="${url}" download="${esc(r.nomeArquivo)}">${ICON.download}Baixar PDF</a>`}`,
+        ${downloadsCap ? `<button class="btn ${imprimir ? 'btn-ghost' : 'btn-primary'}" data-save>${ICON.download}Baixar PDF</button>` : `<a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">${ICON.open}Abrir</a><a class="btn ${imprimir ? 'btn-ghost' : 'btn-primary'}" href="${url}" download="${esc(r.nomeArquivo)}">${ICON.download}Baixar PDF</a>`}
+        ${imprimir ? `<button class="btn btn-primary" data-print>${ICON.doc}Imprimir tudo</button>` : ''}`,
       aoAbrir: d => {
+        const pr = d.querySelector('[data-print]'); if (pr) pr.addEventListener('click', () => imprimirPDF(url));
         const sh = d.querySelector('[data-share]');
         if (sh) sh.addEventListener('click', () => navigator.share({ files: [file], title: r.nomeArquivo }).catch(() => {}));
         const sv = d.querySelector('[data-save]');
@@ -554,7 +556,7 @@
         <div id="tl"></div>
       </div>
       <div id="pn-docs" role="tabpanel" aria-labelledby="tab-docs" ${abaFicha === 'docs' ? '' : 'hidden'}>
-        <div class="page-head" style="margin:0 0 12px"><p class="muted small">Tudo o que foi emitido para ${esc((p.nome || '').split(' ')[0])}, com data e hora. Abra para imprimir, baixar ou reenviar.</p><div class="actions"><button type="button" class="btn btn-ghost" data-x="enviar-docs">${ICON.share}Enviar</button><button type="button" class="btn btn-primary" data-x="novo-doc">${ICON.plus}Novo documento</button></div></div>
+        <div class="page-head" style="margin:0 0 12px"><p class="muted small">Tudo o que foi emitido para ${esc((p.nome || '').split(' ')[0])}, com data e hora. Abra para imprimir, baixar ou reenviar.</p><div class="actions"><button type="button" class="btn btn-ghost" data-x="juntar-docs">${ICON.doc}Juntar em um PDF</button><button type="button" class="btn btn-ghost" data-x="enviar-docs">${ICON.share}Enviar</button><button type="button" class="btn btn-primary" data-x="novo-doc">${ICON.plus}Novo documento</button></div></div>
         <div class="filter-chips" role="group" aria-label="Filtrar documentos por tipo" style="margin-bottom:12px"><button type="button" data-fd="" aria-pressed="true">Todos</button>${Object.entries(NOME_DOC).map(([k, t]) => `<button type="button" data-fd="${k}" aria-pressed="false">${t}</button>`).join('')}</div>
         <div id="docs-pac"></div>
       </div>`;
@@ -587,6 +589,7 @@
     $$('[data-fd]', main).forEach(b => b.addEventListener('click', () => { filtroDoc = b.dataset.fd; $$('[data-fd]', main).forEach(x => x.setAttribute('aria-pressed', String(x === b))); desenharDocs(); }));
     $$('[data-aba]', main).forEach(b => b.addEventListener('click', () => { abaFicha = b.dataset.aba; $$('[data-aba]', main).forEach(x => x.setAttribute('aria-selected', String(x === b))); $('#pn-cons', main).hidden = abaFicha === 'docs'; $('#pn-docs', main).hidden = abaFicha !== 'docs'; }));
     main.querySelector('[data-x="novo-doc"]').addEventListener('click', () => dialogoNovoDocumento(p, { depois: recarregarDocs }));
+    main.querySelector('[data-x="juntar-docs"]').addEventListener('click', () => dialogoJuntar(p, docs));
     main.querySelector('[data-x="enviar-docs"]').addEventListener('click', () => { const v = docs.filter(d => !d.anulado_em); if (!v.length) return toast('Ainda não há documentos para enviar.', true); dialogoEnviar(p, v); });
     desenharDocs();
     main.querySelector('[data-x="nova"]').addEventListener('click', () => dialogoNovaConsulta(p));
@@ -823,8 +826,9 @@
   function desenharDocsConsulta() {
     const box = $('#docs-lista'); if (!box) return;
     const validos = DOCS_CONSULTA.filter(d => !d.anulado_em);
-    box.innerHTML = DOCS_CONSULTA.length ? `<ul class="list">${DOCS_CONSULTA.map(docLinhaHTML).join('')}</ul>${validos.length ? `<div class="actions" style="margin-top:12px"><button type="button" class="btn btn-ghost" data-enviar-todos>${ICON.share}Enviar ${validos.length > 1 ? `os ${validos.length} documentos` : 'o documento'} para a paciente</button></div>` : ''}` : `<p class="muted small">Nenhum documento emitido nesta consulta ainda.</p>`;
+    box.innerHTML = DOCS_CONSULTA.length ? `<ul class="list">${DOCS_CONSULTA.map(docLinhaHTML).join('')}</ul>${validos.length ? `<div class="actions" style="margin-top:12px">${validos.length > 1 ? `<button type="button" class="btn btn-primary" data-ver-todos>${ICON.doc}Ver todos em um PDF</button>` : ''}<button type="button" class="btn btn-ghost" data-enviar-todos>${ICON.share}Enviar ${validos.length > 1 ? `os ${validos.length} documentos` : 'o documento'} para a paciente</button></div>${validos.length > 1 ? '<p class="small muted" style="margin-top:6px">“Ver todos” junta os documentos num PDF só, para imprimir de uma vez.</p>' : ''}` : ''}` : `<p class="muted small">Nenhum documento emitido nesta consulta ainda.</p>`;
     const et = box.querySelector('[data-enviar-todos]'); if (et) et.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); dialogoEnviar(CP, DOCS_CONSULTA); });
+    const vt = box.querySelector('[data-ver-todos]'); if (vt) vt.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); ocupado(vt, () => verDocumentosJuntos(DOCS_CONSULTA, CP)); });
     ligarLinhasDoc(box, () => DB.documentos.list({ consultaId: C.id }).then(l => { DOCS_CONSULTA = l; desenharDocsConsulta(); }));
   }
   function abrirEditorConsulta(focar) {
@@ -919,7 +923,7 @@
     box.innerHTML = `<section class="doc-editor" aria-label="${esc(titulos[E.tipo])}">
         <div class="doc-editor-head"><h3>${esc(titulos[E.tipo])}</h3><button type="button" class="btn btn-quiet" data-ed="descartar">Descartar</button></div>
         <div class="stack">${selClin}${corpo}</div>
-        <div class="actions doc-acoes"><button type="button" class="btn btn-ghost" data-ed="previa">${ICON.open}Pré-visualizar</button><button type="button" class="btn btn-primary" data-ed="emitir">${E.assinar ? ICON.seal + 'Assinar e gerar PDF' : ICON.check + 'Salvar e gerar PDF'}</button></div>
+        <div class="actions doc-acoes"><button type="button" class="btn btn-ghost" data-ed="previa">${ICON.open}Pré-visualizar</button><button type="button" class="btn btn-ghost" data-ed="salvar">${ICON.check}Salvar</button><button type="button" class="btn btn-primary" data-ed="emitir">${E.assinar ? ICON.seal + 'Assinar e gerar PDF' : ICON.check + 'Salvar e gerar PDF'}</button></div>
       </section>`;
     const sec = box.querySelector('.doc-editor');
     const drawRx = foco => { const ol = sec.querySelector('[data-lista="rx"]'); if (!ol) return; ol.innerHTML = E.itens.length ? rxItensHTML(E.itens, true, pref) : `<li class="muted small">Toque num medicamento acima para adicioná-lo, ou use uma receita padrão.</li>`; if (foco) sec.querySelector(`#${pref}-n-${E.itens.length - 1}`)?.focus(); };
@@ -970,6 +974,7 @@
       else if (x === 'salvar-modelo') salvarEditorComoModelo(E);
       else if (x === 'previa') { const err = validarDoc(E); if (err) return toast(err, true); try { const dados = montarDadosPDF(E, ctx.paciente); if (E.assinar && ASSINAVEIS.includes(E.tipo)) dados.digital = { codigo: '——', url: DB.assinatura.urlValidacao('pre-visualizacao'), previa: true }; const r = PDF.gerar(dados); mostrarPDF(r, 'Pré-visualização (ainda não salvo)', true); } catch (er) { falha(er); } }
       else if (x === 'emitir') await ocupado(b, () => emitirDocumento(E, ctx));
+      else if (x === 'salvar') await ocupado(b, () => emitirDocumento(E, ctx, { silencioso: true }));
       else if (x === 'descartar') { if (docTemConteudo(E) && !(await confirmar('Descartar este documento? O que foi preenchido será perdido.', { ok: 'Descartar', perigo: true, titulo: 'Descartar documento' }))) return; ctx.descartar && ctx.descartar(); }
     });
   }
@@ -1202,7 +1207,7 @@
     return NOME_DOC[dados.tipo];
   }
 
-  async function emitirDocumento(E, ctx) {
+  async function emitirDocumento(E, ctx, opts = {}) {
     const err = validarDoc(E); if (err) { toast(err, true); return; }
     if (E.tipo === 'atestado' && E.cid && !E.cid_aut) toast('CID omitido: marque a autorização da paciente para que ele saia no atestado.');
     const assinar = !!E.assinar && ASSINAVEIS.includes(E.tipo);
@@ -1211,9 +1216,9 @@
       if (!S.perfil.crm) { toast('Preencha o seu CRM no Perfil antes de assinar.', true); return; }
     }
     const dados = montarDadosPDF(E, ctx.paciente);
-    return emitirDados(dados, { pacienteId: ctx.paciente.id, consultaId: ctx.consultaId, clinicaId: E.clinica_id, paciente: ctx.paciente, aoEmitir: ctx.emitido, assinar });
+    return emitirDados(dados, { pacienteId: ctx.paciente.id, consultaId: ctx.consultaId, clinicaId: E.clinica_id, paciente: ctx.paciente, aoEmitir: ctx.emitido, assinar, silencioso: opts.silencioso });
   }
-  async function emitirDados(dados, { pacienteId, consultaId, clinicaId, paciente, aoEmitir, assinar }) {
+  async function emitirDados(dados, { pacienteId, consultaId, clinicaId, paciente, aoEmitir, assinar, silencioso }) {
     let r, blob, id;
     try {
       if (assinar) {
@@ -1230,6 +1235,7 @@
     try {
       const doc = await DB.documentos.salvar({ ...(id ? { id } : {}), paciente_id: pacienteId, consulta_id: consultaId || null, clinica_id: clinicaId || null, tipo: dados.tipo, titulo: tituloDoc(dados), nome_arquivo: r.nomeArquivo, emitido_em: dados.data, dados, resumo: resumoDoc(dados), paginas: r.paginas }, blob);
       aoEmitir && await aoEmitir(doc);
+      if (silencioso) { toast(`Salvo na ficha${dados.assinatura ? ' (assinado)' : ''}: ${doc.titulo}.${r.avisos.length ? ' ' + r.avisos.join(' ') : ''} No fim, use “Ver todos em um PDF” ou “Enviar”.`); return doc; }
       mostrarDocumento(doc, blob, { novo: true, avisos: r.avisos, paciente });
       return doc;
     } catch (er) { falha(er); }
@@ -1292,6 +1298,57 @@
       aoFechar: () => setTimeout(() => URL.revokeObjectURL(url), 120000)
     });
   }
+  /* ---------- vários documentos em um só PDF (para ver e imprimir de uma vez) ---------- */
+  let pdfLibP = null;
+  const carregarPdfLib = () => pdfLibP || (pdfLibP = new Promise((res, rej) => {
+    if (window.PDFLib) return res(window.PDFLib);
+    const sc = document.createElement('script'); sc.src = 'vendor/pdf-lib.min.js';
+    sc.onload = () => res(window.PDFLib); sc.onerror = () => { pdfLibP = null; rej(new Error('Não foi possível carregar a ferramenta que junta os PDFs. Verifique a internet.')); };
+    document.head.appendChild(sc);
+  }));
+  async function verDocumentosJuntos(docs, paciente) {
+    docs = docs.filter(d => !d.anulado_em).sort((a, b) => new Date(a.emitido_em) - new Date(b.emitido_em));
+    if (!docs.length) return toast('Não há documentos válidos para juntar.', true);
+    try {
+      const { PDFDocument } = await carregarPdfLib();
+      const out = await PDFDocument.create(); let assinados = 0;
+      for (const d of docs) {
+        const full = d.dados ? d : await DB.documentos.get(d.id);
+        let blob = await DB.documentos.pdf(full); if (!blob) blob = PDF.gerar(full.dados).blob;
+        if ((full.dados || {}).assinatura) assinados++;
+        const src = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+        (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg));
+      }
+      const nome = paciente ? paciente.nome : '';
+      out.setTitle(`Documentos — ${nome}`); out.setAuthor(nomeMedica()); out.setCreator('Consultório Dra. Ana Paula Vianna');
+      const blob = new Blob([await out.save()], { type: 'application/pdf' });
+      const r = { blob, nomeArquivo: PDF.nomeDoArquivo(nome, 'Documentos', new Date()), paginas: out.getPageCount(), avisos: [] };
+      mostrarPDF(r, `${docs.length} documentos em um PDF`, false, { imprimir: true,
+        aviso: `Juntei ${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'} (${r.paginas} ${r.paginas === 1 ? 'página' : 'páginas'}) na ordem em que foram emitidos: ${docs.map(d => esc(d.titulo)).join(' · ')}.${assinados ? ' Este PDF único é para ver e imprimir; para mandar os assinados digitalmente, use “Enviar” — cada um vai separado, com a assinatura válida.' : ''}` });
+    } catch (er) { falha(er); }
+  }
+  function dialogoJuntar(paciente, docs) {
+    const validos = docs.filter(d => !d.anulado_em).sort((a, b) => new Date(b.emitido_em) - new Date(a.emitido_em));
+    if (!validos.length) return toast('Ainda não há documentos.', true);
+    const dia = iso => new Date(iso).toDateString();
+    const ultimoDia = dia(validos[0].emitido_em);
+    let html = '', atual = null;
+    validos.forEach(d => {
+      if (dia(d.emitido_em) !== atual) { if (atual !== null) html += '</ul>'; atual = dia(d.emitido_em); html += `<p class="label" style="margin-top:12px">${fmtData(d.emitido_em)}</p><ul class="lista-check">`; }
+      html += `<li><label class="check"><input type="checkbox" data-jd="${esc(d.id)}" ${dia(d.emitido_em) === ultimoDia ? 'checked' : ''}><span><b>${esc(d.titulo)}</b> <span class="small muted">${fmtHora(d.emitido_em)}</span></span></label></li>`;
+    });
+    abrirDialogo({
+      titulo: 'Juntar documentos em um PDF',
+      corpo: `<div class="stack"><p class="small muted">Marque os documentos para ver e imprimir de uma vez. Já vêm marcados os do último atendimento.</p><div>${html}</ul></div></div>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-ghost" data-enviar-sel>${ICON.share}Enviar marcados</button><button class="btn btn-primary" data-ok>${ICON.doc}Ver em um PDF</button>`,
+      aoAbrir: (d, fechar) => {
+        const marcados = () => validos.filter(x => d.querySelector(`[data-jd="${x.id}"]`).checked);
+        d.querySelector('[data-ok]').addEventListener('click', e => { const m = marcados(); if (!m.length) return toast('Marque ao menos um documento.', true); ocupado(e.currentTarget, async () => { await verDocumentosJuntos(m, paciente); }); });
+        d.querySelector('[data-enviar-sel]').addEventListener('click', () => { const m = marcados(); if (!m.length) return toast('Marque ao menos um documento.', true); fechar(); dialogoEnviar(paciente, m); });
+      }
+    });
+  }
+
   function dialogoAnular(doc, depois) {
     abrirDialogo({
       titulo: 'Anular documento',
