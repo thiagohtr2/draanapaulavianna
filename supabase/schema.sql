@@ -419,3 +419,31 @@ revoke all on public.assinatura_sessoes from anon, authenticated;
 --  o número do retorno é calculado por área no aplicativo.
 -- =====================================================================
 alter table public.consultas add column if not exists area text not null default '';
+-- =====================================================================
+--  v6 — valores recebidos por clínica, serviço e plano; produção
+-- =====================================================================
+create table if not exists public.valores (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  clinica_id  uuid not null references public.clinicas(id) on delete cascade,
+  servico     text not null check (length(trim(servico)) > 0),
+  plano       text not null default 'Particular' check (length(trim(plano)) > 0),
+  valor       numeric(10,2) not null check (valor >= 0),
+  criado_em   timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (clinica_id, servico, plano)
+);
+create index if not exists valores_owner_idx on public.valores(owner_id, clinica_id);
+drop trigger if exists touch_valores on public.valores;
+create trigger touch_valores before update on public.valores for each row execute function public.tg_touch();
+alter table public.valores enable row level security;
+drop policy if exists valores_dono on public.valores;
+create policy valores_dono on public.valores for all to authenticated
+  using (owner_id = (select auth.uid()))
+  with check (owner_id = (select auth.uid()) and exists (select 1 from public.clinicas c where c.id = clinica_id and c.owner_id = (select auth.uid())));
+revoke all on public.valores from anon;
+
+-- o que foi feito em cada consulta e quanto ela recebe (o valor fica gravado na consulta)
+alter table public.consultas add column if not exists plano   text not null default '';
+alter table public.consultas add column if not exists servico text not null default '';
+alter table public.consultas add column if not exists valor   numeric(10,2) check (valor is null or valor >= 0);

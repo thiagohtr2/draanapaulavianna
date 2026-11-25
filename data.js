@@ -74,9 +74,10 @@
     };
 
     const consultas = {
-      async list({ pacienteId, limite } = {}) {
+      async list({ pacienteId, limite, desde } = {}) {
         let q = sb.from('consultas').select('*').order('data', { ascending: false });
         if (pacienteId) q = q.eq('paciente_id', pacienteId);
+        if (desde) q = q.gte('data', desde);
         if (limite) q = q.limit(limite);
         return ok(await q);
       },
@@ -87,6 +88,8 @@
         return ok(await sb.from('consultas').insert(rest).select().single());
       },
       async finalizar(id) { return ok(await sb.from('consultas').update({ status: 'finalizada' }).eq('id', id).select().single()); },
+      // plano, serviço e valor podem ser corrigidos mesmo depois de finalizada (não fazem parte do prontuário)
+      async faturamento(id, { plano, servico, valor }) { return ok(await sb.from('consultas').update({ plano, servico, valor }).eq('id', id).select().single()); },
       async adendo(id, texto) {
         const c = await consultas.get(id);
         const adendos = [...(c.adendos || []), { em: agora(), texto }];
@@ -99,6 +102,12 @@
       async list() { return ok(await sb.from('favoritos').select('*').order('nome')); },
       async save(f) { const { id, owner_id, criado_em, ...rest } = f; return id ? ok(await sb.from('favoritos').update(rest).eq('id', id).select().single()) : ok(await sb.from('favoritos').insert(rest).select().single()); },
       async remove(id) { ok(await sb.from('favoritos').delete().eq('id', id)); }
+    };
+
+    const valores = {
+      async list() { return ok(await sb.from('valores').select('*').order('servico')); },
+      async save(v) { const { id, owner_id, criado_em, atualizado_em, ...rest } = v; return id ? ok(await sb.from('valores').update(rest).eq('id', id).select().single()) : ok(await sb.from('valores').insert(rest).select().single()); },
+      async remove(id) { ok(await sb.from('valores').delete().eq('id', id)); }
     };
 
     const documentos = {
@@ -189,11 +198,11 @@
     };
 
     async function exportar() {
-      const [p, cl, pa, pc, co, fa, mo, dc] = await Promise.all(['perfis', 'clinicas', 'pacientes', 'paciente_clinicas', 'consultas', 'favoritos', 'modelos', 'documentos'].map(t => sb.from(t).select('*').then(ok)));
-      return { exportado_em: agora(), perfis: p, clinicas: cl, pacientes: pa, paciente_clinicas: pc, consultas: co, favoritos: fa, modelos: mo, documentos: dc };
+      const [p, cl, pa, pc, co, fa, mo, dc, va] = await Promise.all(['perfis', 'clinicas', 'pacientes', 'paciente_clinicas', 'consultas', 'favoritos', 'modelos', 'documentos', 'valores'].map(t => sb.from(t).select('*').then(ok)));
+      return { exportado_em: agora(), perfis: p, clinicas: cl, pacientes: pa, paciente_clinicas: pc, consultas: co, favoritos: fa, modelos: mo, documentos: dc, valores: va };
     }
 
-    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, assinatura, exportar };
+    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, valores, modelos, documentos, cid, envios, assinatura, exportar };
   }
 
   const normTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -218,7 +227,7 @@
   function demoDB() {
     const KEY = 'apv-demo-v1';
     let mem = null;
-    const load = () => { if (mem) return mem; try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; } if (!mem) { mem = seed(); persist(); } if (!mem.modelos) { mem.modelos = seedModelos(); persist(); } if (!mem.documentos) { mem.documentos = []; persist(); } return mem; };
+    const load = () => { if (mem) return mem; try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; } if (!mem) { mem = seed(); persist(); } if (!mem.modelos) { mem.modelos = seedModelos(); persist(); } if (!mem.documentos) { mem.documentos = []; persist(); } if (!mem.valores) { mem.valores = []; persist(); } return mem; };
     const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* modo privado: fica só na memória */ } };
     const tick = (v) => new Promise(r => setTimeout(() => r(JSON.parse(JSON.stringify(v))), 60));
     let logado = false; try { logado = sessionStorage.getItem('apv-demo-login') === '1'; } catch (e) {}
@@ -286,7 +295,7 @@
       async vincular(pid, cid) { const d = load(); if (!d.pc.some(x => x.paciente_id === pid && x.clinica_id === cid)) { d.pc.push({ paciente_id: pid, clinica_id: cid }); persist(); } }
     };
     const consultas = {
-      async list({ pacienteId, limite } = {}) { let a = [...load().consultas].sort((x, y) => y.data.localeCompare(x.data)); if (pacienteId) a = a.filter(c => c.paciente_id === pacienteId); if (limite) a = a.slice(0, limite); return tick(a); },
+      async list({ pacienteId, limite, desde } = {}) { let a = [...load().consultas].sort((x, y) => y.data.localeCompare(x.data)); if (pacienteId) a = a.filter(c => c.paciente_id === pacienteId); if (desde) a = a.filter(c => c.data >= desde); if (limite) a = a.slice(0, limite); return tick(a); },
       async get(id) { return tick(load().consultas.find(c => c.id === id) || null); },
       async save(c) {
         const d = load();
@@ -294,11 +303,23 @@
         const n = { status: 'rascunho', registro: {}, prescricao: [], exames: [], orientacoes: '', adendos: [], ...c, id: uuid(), criado_em: agora(), data: c.data || agora() }; d.consultas.push(n); persist(); return tick(n);
       },
       async finalizar(id) { const d = load(); const c = d.consultas.find(x => x.id === id); c.status = 'finalizada'; c.finalizada_em = agora(); persist(); return tick(c); },
+      async faturamento(id, f) { const d = load(); const c = d.consultas.find(x => x.id === id); Object.assign(c, { plano: f.plano, servico: f.servico, valor: f.valor }); persist(); return tick(c); },
       async adendo(id, texto) { const d = load(); const c = d.consultas.find(x => x.id === id); c.adendos = [...(c.adendos || []), { em: agora(), texto }]; persist(); return tick(c); },
       async remove(id) { const d = load(); const c = d.consultas.find(x => x.id === id); if (c && c.status === 'finalizada') throw new Error('Consulta finalizada não pode ser excluída (prontuário).'); d.consultas = d.consultas.filter(x => x.id !== id); persist(); }
     };
+    const valores = {
+      async list() { return tick([...(load().valores || [])].sort((a, b) => a.servico.localeCompare(b.servico, 'pt-BR'))); },
+      async save(v) {
+        const d = load(); d.valores = d.valores || [];
+        const dup = d.valores.find(x => x.id !== v.id && x.clinica_id === v.clinica_id && normTxt(x.servico) === normTxt(v.servico) && normTxt(x.plano) === normTxt(v.plano));
+        if (dup) throw new Error('Já existe um valor para este serviço e plano nesta clínica.');
+        if (v.id) { const i = d.valores.findIndex(x => x.id === v.id); d.valores[i] = { ...d.valores[i], ...v }; persist(); return tick(d.valores[i]); }
+        const n = { ...v, id: uuid(), criado_em: agora() }; d.valores.push(n); persist(); return tick(n);
+      },
+      async remove(id) { const d = load(); d.valores = (d.valores || []).filter(x => x.id !== id); persist(); return tick(null); }
+    };
     async function exportar() { return { exportado_em: agora(), ...load() }; }
-    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, assinatura, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
+    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, valores, modelos, documentos, cid, envios, assinatura, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
   }
 
   // Na demonstração, os modelos sugeridos já vêm carregados
@@ -331,14 +352,14 @@
       ],
       pc: [{ paciente_id: p1, clinica_id: c1 }, { paciente_id: p1, clinica_id: c2 }, { paciente_id: p2, clinica_id: c1 }, { paciente_id: p3, clinica_id: c2 }],
       consultas: [
-        { id: k1, paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', area: 'Fertilidade', status: 'finalizada', finalizada_em: dias(62),
+        { id: k1, paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', area: 'Fertilidade', plano: 'Particular', servico: 'Consulta de fertilidade', valor: 700, status: 'finalizada', finalizada_em: dias(62),
           registro: { motivo: 'Desejo de engravidar.', hda: 'Tentando engravidar há 14 meses, ciclos regulares.', ciclo: 'Regular, 28/5 dias', gestacoes: '0', partos: '0', cesareas: '0', abortos: '0', contracepcao: 'Nenhum há 14 meses', tentante: '14 meses', pa: '110x70', peso: '62', altura: '1,64', exame_fisico: 'Bom estado geral.', exame_gineco: 'Especular sem alterações.', hipotese: 'Infertilidade feminina não especificada', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Solicitada investigação inicial do casal.', retorno: 'Com exames' },
           prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', area: 'Fertilidade', status: 'rascunho',
+        { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', area: 'Fertilidade', plano: 'Particular', servico: '', valor: null, status: 'rascunho',
           registro: { motivo: 'Retorno com exames.', hipotese: '', conduta: '' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Primeira consulta', area: 'Ginecológica', status: 'finalizada', finalizada_em: dias(20),
+        { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Primeira consulta', area: 'Ginecológica', plano: 'Plano exemplo', servico: 'Consulta + preventivo', valor: 150, status: 'finalizada', finalizada_em: dias(20),
           registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', cid_desc: 'Vaginite aguda', conduta: 'Tratamento oral.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: k4, paciente_id: p1, clinica_id: c1, data: dias(30), tipo: 'Retorno', area: 'Fertilidade', status: 'finalizada', finalizada_em: dias(30),
+        { id: k4, paciente_id: p1, clinica_id: c1, data: dias(30), tipo: 'Retorno', area: 'Fertilidade', plano: 'Particular', servico: 'Retorno de fertilidade', valor: 400, status: 'finalizada', finalizada_em: dias(30),
           registro: { motivo: 'Retorno com exames da investigação.', hipotese: 'Infertilidade feminina', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Indução da ovulação com coito programado.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] }
       ],
       documentos: [
@@ -347,6 +368,12 @@
         docSeed(k3, p2, c1, 20, { tipo: 'receita', itens: [{ nome: 'Metronidazol', apresentacao: '250 mg comprimido', via: 'Oral', quantidade: '28 comprimidos', posologia: 'Tomar 2 comprimidos de 12 em 12 horas por 7 dias.', antimicrobiano: true, controlado: false }], orientacoes: 'Evitar bebida alcoólica durante o tratamento e até 24 horas após.', incluirOrientacoes: true }, 'Receita', 'Metronidazol 250 mg comprimido')
       ],
       modelos: seedModelos(),
+      valores: [
+        ['Consulta', 'Particular', 450], ['Consulta', 'Plano exemplo', 110], ['Coleta de preventivo', 'Plano exemplo', 45], ['Consulta + preventivo', 'Plano exemplo', 150],
+        ['Consulta de fertilidade', 'Particular', 700], ['Retorno de fertilidade', 'Particular', 400], ['Ultrassonografia de monitorização', 'Particular', 250]
+      ].map(([servico, plano, valor]) => ({ id: uuid(), clinica_id: c1, servico, plano, valor })).concat([
+        ['Consulta', 'Particular', 400], ['Consulta + preventivo', 'Plano exemplo', 140], ['Retorno de fertilidade', 'Particular', 380]
+      ].map(([servico, plano, valor]) => ({ id: uuid(), clinica_id: c2, servico, plano, valor }))),
       favoritos: (() => { const vistos = new Set(); const out = []; (window.MODELOS_BASE || []).filter(m => m.tipo === 'prescricao').forEach(m => (m.conteudo.itens || []).forEach(i => { const k = i.nome + '|' + i.apresentacao; if (!vistos.has(k)) { vistos.add(k); out.push({ id: uuid(), ...i }); } })); return out; })()
     };
   }

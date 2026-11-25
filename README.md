@@ -136,6 +136,18 @@ nova “primeira consulta” reinicia a contagem. Na lista de pacientes aparece,
 Busca por nome, CPF, telefone, e-mail, convênio ou área; ordenação por nome (A–Z/Z–A), última consulta,
 clínica (agrupado), idade ou cadastro; filtros por clínica, período da última consulta, área da última consulta e convênio.
 
+## Valores e produção
+- **Clínicas → Tabela de valores**: quanto você recebe em cada clínica, por **serviço** e por **plano**
+  (ex.: “Coleta de preventivo · Unimed · R$ 45”, “Consulta + preventivo · Bradesco · R$ 150”).
+  Dá para copiar a tabela de uma clínica para outra e ajustar o que for diferente.
+- **Na consulta**: o plano vem da ficha da paciente; ao escolher o serviço, o valor da tabela entra
+  sozinho (e pode ser ajustado caso a caso). O valor fica gravado na consulta: mudar a tabela depois não
+  altera o que já foi atendido. Em consulta finalizada, plano/serviço/valor ainda podem ser corrigidos
+  (o prontuário continua protegido).
+- **Produção** (atalho no Início e em Clínicas): total a receber por período (hoje, semana, mês, mês
+  passado, ano ou datas escolhidas), por clínica, por plano e por serviço, lista dos atendimentos,
+  alerta de atendimentos sem valor e **planilha** (CSV, abre no Excel/Google Planilhas).
+
 ## Sobre os documentos
 - **Receituário simples**: medicamentos agrupados por via de uso, orientações, assinatura e rodapé da clínica.
 - **Antimicrobianos** (RDC Anvisa 471/2021): saem automaticamente em **2 vias**, com idade e sexo

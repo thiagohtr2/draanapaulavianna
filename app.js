@@ -89,10 +89,10 @@
   const temAlergia = t => !!(t && t.trim() && !/^\s*(nega|sem\s|nenhum|nenhuma|não\s|nao\s)/i.test(t));
 
   /* ---------------- estado ---------------- */
-  const S = { user: null, perfil: null, clinicas: [], pacientes: null, favoritos: [], modelos: [] };
+  const S = { user: null, perfil: null, clinicas: [], pacientes: null, favoritos: [], modelos: [], valores: [] };
   async function carregarBase() {
-    const [perfil, clinicas, favoritos, modelos] = await Promise.all([DB.perfil.get(), DB.clinicas.list(), DB.favoritos.list(), DB.modelos.list()]);
-    S.perfil = perfil || {}; S.clinicas = clinicas; S.favoritos = favoritos; S.modelos = modelos;
+    const [perfil, clinicas, favoritos, modelos, valores] = await Promise.all([DB.perfil.get(), DB.clinicas.list(), DB.favoritos.list(), DB.modelos.list(), DB.valores.list().catch(() => [])]);
+    S.perfil = perfil || {}; S.clinicas = clinicas; S.favoritos = favoritos; S.modelos = modelos; S.valores = valores;
   }
   async function pacientes(force) { if (!S.pacientes || force) S.pacientes = await DB.pacientes.list(); return S.pacientes; }
   const clinicaPorId = id => S.clinicas.find(c => c.id === id);
@@ -342,6 +342,8 @@
       else if (h.startsWith('paciente-')) { sec = 'pacientes'; await viewPaciente(main, h.slice(9)); }
       else if (h.startsWith('consulta-')) { sec = 'pacientes'; await viewConsulta(main, h.slice(9)); }
       else if (h === 'clinicas') { sec = 'clinicas'; await viewClinicas(main); }
+      else if (h === 'valores') { sec = 'clinicas'; await viewValores(main); }
+      else if (h === 'producao') { sec = 'inicio'; await viewProducao(main); }
       else if (h === 'modelos') { sec = 'modelos'; await viewModelos(main); }
       else if (h === 'perfil') { sec = 'perfil'; await viewPerfil(main); }
       else if (h === 'main') return;
@@ -363,6 +365,10 @@
     const saud = hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite';
     const rasc = cs.filter(c => c.status === 'rascunho');
     const hojeN = cs.filter(c => new Date(c.data) >= hoje()).length;
+    const iniMes = new Date(); iniMes.setDate(1); iniMes.setHours(0, 0, 0, 0);
+    const csMes = await DB.consultas.list({ desde: iniMes.toISOString() }).catch(() => []);
+    const prodMes = csMes.filter(c => new Date(c.data) >= iniMes).reduce((a, c) => a + (Number(c.valor) || 0), 0);
+    const prodHoje = csMes.filter(c => new Date(c.data) >= hoje()).reduce((a, c) => a + (Number(c.valor) || 0), 0);
     const ult = cs.filter(c => c.status === 'finalizada').slice(0, 6);
     const rotP = {}; ps.forEach(p => Object.assign(rotP, rotulosConsultas(p.consultas)));
     const linha = c => { const cl = clinicaPorId(c.clinica_id); const rt = rotP[c.id] || rotulosConsultas([c])[c.id]; return `<li><a class="row" href="#consulta-${esc(c.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(nomeP(c.paciente_id)))}</span><span class="grow"><span class="title nome-selo">${esc(nomeP(c.paciente_id))}${seloArea(rt.area, rt.rotulo)}</span><span class="meta"><span>${fmtData(c.data)} · ${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span></span></span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : ''}${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`; };
@@ -382,7 +388,7 @@
       <div class="stats" role="list">
         <div class="stat" role="listitem"><b>${ps.length}</b><span>pacientes</span></div>
         <div class="stat" role="listitem"><b>${hojeN}</b><span>consultas hoje</span></div>
-        <div class="stat" role="listitem"><b>${S.clinicas.filter(c => c.ativa !== false).length}</b><span>clínicas</span></div>
+        <a class="stat stat-link" role="listitem" href="#producao"><b>${PDF.brl(prodMes)}</b><span>a receber no mês${prodHoje ? ` · hoje ${PDF.brl(prodHoje)}` : ''}</span></a>
       </div>
       ${!S.clinicas.length ? `<div class="alert info" style="margin-top:1rem">${ICON.alert}<p>Comece cadastrando as clínicas onde você atende — o nome delas sai no receituário. <a href="#clinicas">Cadastrar clínica</a></p></div>` : ''}
       ${rasc.length ? `<h2 class="rule">Em andamento</h2><ul class="list">${rasc.map(linha).join('')}</ul>` : ''}
@@ -651,7 +657,7 @@
             if (!escolhida.clinicas.includes(clinica_id)) await DB.pacientes.vincular(escolhida.id, clinica_id);
             const auto = textosAutomaticos();
             const orientAuto = auto.orientacoes || ''; delete auto.orientacoes;
-            const c = await DB.consultas.save({ paciente_id: escolhida.id, clinica_id, tipo: tp.value, area: ar.value, data: dt ? new Date(dt).toISOString() : new Date().toISOString(), status: 'rascunho', registro: { incluir_orientacoes: true, ...auto }, prescricao: [], exames: [], orientacoes: orientAuto, adendos: [] });
+            const c = await DB.consultas.save({ paciente_id: escolhida.id, clinica_id, tipo: tp.value, area: ar.value, plano: (escolhida.convenio || '').trim() || PLANO_PADRAO, data: dt ? new Date(dt).toISOString() : new Date().toISOString(), status: 'rascunho', registro: { incluir_orientacoes: true, ...auto }, prescricao: [], exames: [], orientacoes: orientAuto, adendos: [] });
             S.pacientes = null; fechar(); location.hash = '#consulta-' + c.id;
           } catch (err) { falha(err); }
         }));
@@ -669,7 +675,7 @@
     clearTimeout(salvarTimer); if (!C || !sujo || C.status !== 'rascunho') return;
     sujo = false;
     const snap = JSON.parse(JSON.stringify(C));
-    salvando = DB.consultas.save({ id: snap.id, paciente_id: snap.paciente_id, clinica_id: snap.clinica_id, data: snap.data, tipo: snap.tipo, area: snap.area || areaDe(snap), registro: snap.registro, prescricao: snap.prescricao, exames: snap.exames, orientacoes: snap.orientacoes })
+    salvando = DB.consultas.save({ id: snap.id, paciente_id: snap.paciente_id, clinica_id: snap.clinica_id, data: snap.data, tipo: snap.tipo, area: snap.area || areaDe(snap), plano: snap.plano || '', servico: snap.servico || '', valor: snap.valor ?? null, registro: snap.registro, prescricao: snap.prescricao, exames: snap.exames, orientacoes: snap.orientacoes })
       .then(() => marcarSalvo('', `Salvo às ${fmtHora(new Date().toISOString())}`))
       .catch(e => { sujo = true; marcarSalvo('error', 'Não salvo — sem conexão? Tentando de novo…'); clearTimeout(salvarTimer); salvarTimer = setTimeout(salvarAgora, 5000); console.error(e); });
     await salvando; salvando = null;
@@ -729,6 +735,7 @@
               ${campo('Área da consulta', `<select id="c-area" name="area">${[...new Set([...AREAS, areaDe(C)])].map(a => `<option ${a === areaDe(C) ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>`)}
               ${campo('Atendimento', `<select id="c-tipo" name="tipo">${MODALIDADES.map(t => `<option ${t === modalidadeDe(C) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}
             </div>
+            ${faturamentoHTML()}
             <div style="margin-top:12px">${resumoFicha()}</div>
           </div>
           ${sec(0, `<div class="stack">${areaTexto('r-motivo', 'registro.motivo', r.motivo, { rot: 'Queixa principal / motivo da consulta', linhas: 2 })}${areaTexto('r-hda', 'registro.hda', r.hda, { rot: 'História da doença atual', linhas: 5 })}</div>`)}
@@ -773,7 +780,8 @@
         </form>
       </div>`;
     const f = $('#f-consulta', main);
-    calcIMC(); marcarSecoes(); desenharDocsConsulta(); abrirEditorConsulta();
+    calcIMC(); marcarSecoes(); desenharDocsConsulta(); abrirEditorConsulta(); atualizarFaturamento(null);
+    $('#c-valor').addEventListener('blur', e => { if (e.target.value.trim()) e.target.value = fmtValor(parseValor(e.target.value)); });
 
     f.addEventListener('input', e => {
       const el = e.target;
@@ -781,7 +789,9 @@
       if (el.name && el.name.startsWith('registro.')) { const k = el.name.slice(9); C.registro[k] = el.type === 'checkbox' ? el.checked : el.value; if (k === 'peso' || k === 'altura') calcIMC(); if (k === 'cid' && !el.value) C.registro.cid_desc = ''; }
       else if (el.name === 'tipo' || el.name === 'area') { C[el.name] = el.value; const rc = $('#ctx-selo'); if (rc) rc.innerHTML = seloArea(rotuloDaConsulta().area, rotuloDaConsulta().rotulo); }
       else if (el.name === 'data') { if (el.value) C.data = new Date(el.value).toISOString(); }
-      else if (el.name === 'clinica_id') { C.clinica_id = el.value; if (!CP.clinicas.includes(el.value)) DB.pacientes.vincular(CP.id, el.value).then(() => CP.clinicas.push(el.value)).catch(falha); }
+      else if (el.name === 'plano' || el.name === 'servico') { C[el.name] = el.value; atualizarFaturamento(el.name); }
+      else if (el.name === 'valor') { C.valor = parseValor(el.value); atualizarFaturamento('valor'); }
+      else if (el.name === 'clinica_id') { C.clinica_id = el.value; atualizarFaturamento('clinica'); if (!CP.clinicas.includes(el.value)) DB.pacientes.vincular(CP.id, el.value).then(() => CP.clinicas.push(el.value)).catch(falha); }
       else return;
       agendarSalvar(); marcarSecoes();
     });
@@ -1411,6 +1421,7 @@
         <button class="btn btn-ghost" data-x="pdf-reg">${ICON.doc}Registro da consulta (PDF)</button>
       </div>
       ${temAlergia(CP.alergias) ? `<div class="alert danger" style="margin-bottom:12px">${ICON.alert}<p><b>Alergias:</b> ${esc(CP.alergias)}</p></div>` : ''}
+      <section class="card fat-read"><div class="fat-read-l">${ICON.cash}<div><p class="label">Atendimento na clínica</p><p><b>${esc(C.servico || 'Serviço não informado')}</b> · ${esc(C.plano || PLANO_PADRAO)}</p></div></div><div class="fat-read-r"><b class="valor-grande">${C.valor != null ? PDF.brl(C.valor) : '—'}</b><button class="btn btn-quiet" type="button" data-x="fat-editar">Editar</button></div></section>
       ${secoes || '<div class="empty"><p>Esta consulta foi finalizada sem registros.</p></div>'}
       <section class="card" id="docs-fin"><h2 style="font-size:1.5rem;margin-bottom:12px">Documentos emitidos</h2><div id="docs-lista"></div></section>
       <section class="card" id="adendos">
@@ -1421,6 +1432,7 @@
     desenharDocsConsulta();
     const recarregar = () => DB.documentos.list({ consultaId: C.id }).then(l => { DOCS_CONSULTA = l; desenharDocsConsulta(); });
     main.querySelector('[data-x="novo-doc"]').addEventListener('click', () => dialogoNovoDocumento(CP, { consultaId: C.id, depois: recarregar }));
+    main.querySelector('[data-x="fat-editar"]').addEventListener('click', () => dialogoFaturamento(() => leituraConsulta(main)));
     main.querySelector('[data-x="pdf-reg"]').addEventListener('click', e => ocupado(e.currentTarget, () => {
       const cl = clinicaPorId(C.clinica_id) || {};
       const dados = { medico: pick(S.perfil, ['tratamento', 'nome', 'especialidade', 'crm', 'crm_uf', 'rqe', 'telefone', 'email']), clinica: pick(cl, ['nome', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email']), paciente: pick(CP, ['nome', 'nome_social', 'data_nascimento', 'sexo', 'cpf']), data: new Date().toISOString(), tamanho: S.perfil.pdf_tamanho || 'A4', marcaDagua: S.perfil.pdf_marca_dagua !== false, tipo: 'registro', registro: registroParaPDF().slice(1), subtitulo: `${rotuloDaConsulta().texto} — ${fmtData(C.data)}` };
@@ -1943,13 +1955,224 @@
   }
 
   /* =====================================================================
+     Valores recebidos por clínica, serviço e plano
+     ===================================================================== */
+  const PLANO_PADRAO = 'Particular';
+  const SERVICOS_SUGERIDOS = ['Consulta', 'Retorno', 'Coleta de preventivo', 'Consulta + preventivo', 'Consulta + ultrassonografia', 'Consulta de pré-natal', 'Consulta de fertilidade', 'Retorno de fertilidade', 'Ultrassonografia de monitorização', 'Inserção de DIU', 'Retirada de DIU'];
+  const valoresDa = clinicaId => (S.valores || []).filter(v => v.clinica_id === clinicaId);
+  const valorTabela = (clinicaId, servico, plano) => { const v = valoresDa(clinicaId).find(x => norm(x.servico).trim() === norm(servico).trim() && norm(x.plano).trim() === norm(plano).trim()); return v ? Number(v.valor) : null; };
+  const unicos = l => { const vis = new Set(); return l.filter(x => { const k = norm(x).trim(); if (!x || vis.has(k)) return false; vis.add(k); return true; }); };
+  function faturamentoHTML() {
+    if (!C.plano) C.plano = (CP.convenio || '').trim() || PLANO_PADRAO;
+    return `<div class="fat-box"><p class="label fat-tit">${ICON.cash}Atendimento na clínica — o que você recebe</p>
+      <div class="grid grid-3">
+        ${campo('Plano / convênio', `<input id="c-plano" name="plano" list="dl-planos" value="${esc(C.plano)}" autocomplete="off">`)}
+        ${campo('Serviço realizado', `<input id="c-serv" name="servico" list="dl-serv" value="${esc(C.servico || '')}" placeholder="Ex.: Consulta + preventivo" autocomplete="off">`)}
+        ${campo('Valor (R$)', `<input id="c-valor" name="valor" inputmode="decimal" value="${esc(fmtValor(C.valor))}" placeholder="0,00" autocomplete="off">`)}
+      </div>
+      <p class="small muted fat-dica" id="c-fat-dica" aria-live="polite"></p>
+      <datalist id="dl-planos"></datalist><datalist id="dl-serv"></datalist></div>`;
+  }
+  function atualizarFaturamento(origem) {
+    const dp = $('#dl-planos'), ds = $('#dl-serv'), vi = $('#c-valor'), dica = $('#c-fat-dica'); if (!dp) return;
+    const vals = valoresDa(C.clinica_id);
+    dp.innerHTML = unicos([PLANO_PADRAO, CP.convenio, ...vals.map(v => v.plano)]).map(x => `<option value="${esc(x)}">`).join('');
+    const doPlano = vals.filter(v => norm(v.plano).trim() === norm(C.plano).trim());
+    ds.innerHTML = doPlano.map(v => `<option value="${esc(v.servico)}">${esc(PDF.brl(v.valor))}</option>`).join('') + unicos([...vals.map(v => v.servico), ...SERVICOS_SUGERIDOS]).filter(x => !doPlano.some(v => norm(v.servico) === norm(x))).map(x => `<option value="${esc(x)}">`).join('');
+    const tab = valorTabela(C.clinica_id, C.servico || '', C.plano || '');
+    if (origem && origem !== 'valor' && tab != null) { C.valor = tab; vi.value = fmtValor(tab); agendarSalvar(); }
+    const cl = (clinicaPorId(C.clinica_id) || {}).nome || 'esta clínica';
+    dica.innerHTML = !C.servico ? `Escolha o serviço: o valor da tabela de ${esc(cl)} entra sozinho.`
+      : tab != null ? (Number(C.valor) === tab ? `${ICON.check}Valor da tabela de ${esc(cl)}.` : `Tabela de ${esc(cl)}: ${PDF.brl(tab)} — o valor desta consulta foi alterado.`)
+      : `Sem valor na tabela para “${esc(C.servico)}” pelo plano ${esc(C.plano || PLANO_PADRAO)} em ${esc(cl)}. <a href="#valores">Cadastrar na tabela de valores</a>`;
+  }
+  function dialogoFaturamento(depois) {
+    const F = { plano: C.plano || PLANO_PADRAO, servico: C.servico || '', valor: C.valor };
+    abrirDialogo({
+      titulo: 'Atendimento na clínica',
+      corpo: `<form id="f-fat" class="stack" novalidate>
+        ${campo('Plano / convênio', `<input id="ff-plano" list="ff-dlp" value="${esc(F.plano)}">`)}
+        ${campo('Serviço realizado', `<input id="ff-serv" list="ff-dls" value="${esc(F.servico)}">`)}
+        ${campo('Valor (R$)', `<input id="ff-valor" inputmode="decimal" value="${esc(fmtValor(F.valor))}">`)}
+        <p class="small muted" id="ff-dica"></p>
+        <datalist id="ff-dlp">${unicos([PLANO_PADRAO, CP.convenio, ...valoresDa(C.clinica_id).map(v => v.plano)]).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+        <datalist id="ff-dls">${unicos([...valoresDa(C.clinica_id).map(v => v.servico), ...SERVICOS_SUGERIDOS]).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+        <p class="small muted">Só os dados de faturamento mudam: o prontuário finalizado continua protegido.</p></form>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar</button>`,
+      aoAbrir: (d, fechar) => {
+        const pl = d.querySelector('#ff-plano'), sv = d.querySelector('#ff-serv'), vl = d.querySelector('#ff-valor'), dica = d.querySelector('#ff-dica');
+        const puxar = () => { const t = valorTabela(C.clinica_id, sv.value, pl.value); if (t != null) { vl.value = fmtValor(t); dica.textContent = 'Valor da tabela desta clínica.'; } else dica.textContent = sv.value ? 'Sem valor na tabela para este serviço e plano.' : ''; };
+        pl.addEventListener('change', puxar); sv.addEventListener('change', puxar);
+        d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+          try {
+            const dados = { plano: pl.value.trim() || PLANO_PADRAO, servico: sv.value.trim(), valor: parseValor(vl.value) };
+            await DB.consultas.faturamento(C.id, dados); Object.assign(C, dados); toast('Atendimento atualizado.'); fechar(); depois && depois();
+          } catch (err) { falha(err); }
+        }));
+      }
+    });
+  }
+
+  let clinicaValores = '';
+  async function viewValores(main) {
+    main.innerHTML = `<div class="skeleton"></div>`;
+    [S.clinicas, S.valores] = await Promise.all([DB.clinicas.list(), DB.valores.list()]);
+    if (!S.clinicas.length) { main.innerHTML = `<div class="empty"><h2>Cadastre uma clínica primeiro</h2><p>A tabela de valores é por clínica.</p><a class="btn btn-primary" href="#clinicas">Ir para Clínicas</a></div>`; return; }
+    if (!S.clinicas.some(c => c.id === clinicaValores)) clinicaValores = (S.clinicas.find(c => c.ativa !== false) || S.clinicas[0]).id;
+    const cl = clinicaPorId(clinicaValores);
+    const lst = valoresDa(clinicaValores).sort((a, b) => a.servico.localeCompare(b.servico, 'pt-BR') || a.plano.localeCompare(b.plano, 'pt-BR'));
+    const grupos = []; lst.forEach(v => { let g = grupos.find(x => norm(x[0]) === norm(v.servico)); if (!g) grupos.push(g = [v.servico, []]); g[1].push(v); });
+    const outras = S.clinicas.filter(c => c.id !== clinicaValores && valoresDa(c.id).length);
+    main.innerHTML = `
+      <a class="back" href="#clinicas">${ICON.back}Clínicas</a>
+      <div class="page-head"><div><h1>Tabela de valores</h1><p class="muted small">Quanto você recebe em cada clínica, por serviço e por plano. Na consulta, ao escolher o plano e o serviço, o valor entra sozinho — e dá para ajustar caso a caso.</p></div>
+        <div class="actions"><a class="btn btn-ghost" href="#producao">${ICON.cash}Produção</a><button class="btn btn-primary" data-x="novo">${ICON.plus}Novo valor</button></div></div>
+      <div class="filter-chips" role="group" aria-label="Clínica" style="margin-bottom:16px">${S.clinicas.map(c => `<button type="button" data-cv="${esc(c.id)}" aria-pressed="${c.id === clinicaValores}">${esc(c.nome)} <span class="muted">(${valoresDa(c.id).length})</span></button>`).join('')}</div>
+      ${grupos.length ? grupos.map(([sv, itens]) => `<h2 class="rule">${esc(sv)}</h2><ul class="list">${itens.map(v => `<li><button type="button" class="row" data-vid="${esc(v.id)}"><span class="avatar" aria-hidden="true">${ICON.cash.replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(v.plano)}</span><span class="small muted">${esc(sv)} · ${esc(cl.nome)}</span></span><b class="valor">${PDF.brl(v.valor)}</b>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`).join('')}</ul>`).join('')
+        : `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhum valor em ${esc(cl.nome)}</h3><p>Cadastre o que você recebe por serviço e plano — por exemplo: “Coleta de preventivo” pelo plano X, “Consulta + preventivo”, “Consulta + acompanhamento”…</p>
+          <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-x="novo">${ICON.plus}Cadastrar valor</button>${outras.length ? `<button class="btn btn-ghost" data-x="copiar">Copiar de outra clínica</button>` : ''}</div></div>`}
+      ${grupos.length && outras.length ? `<p style="margin-top:16px"><button class="btn btn-quiet" data-x="copiar" style="padding-left:0">Copiar valores de outra clínica</button></p>` : ''}`;
+    const recarregar = () => viewValores(main);
+    $$('[data-cv]', main).forEach(b => b.addEventListener('click', () => { clinicaValores = b.dataset.cv; recarregar(); }));
+    $$('[data-x="novo"]', main).forEach(b => b.addEventListener('click', () => dialogoValor({ clinica_id: clinicaValores }, recarregar)));
+    $$('[data-vid]', main).forEach(b => b.addEventListener('click', () => dialogoValor(S.valores.find(v => v.id === b.dataset.vid), recarregar)));
+    $$('[data-x="copiar"]', main).forEach(b => b.addEventListener('click', () => dialogoCopiarValores(outras, recarregar)));
+  }
+  async function dialogoValor(orig, depois) {
+    const novo = !orig.id; const V = { plano: PLANO_PADRAO, servico: '', valor: null, ...orig };
+    const ps = await pacientes().catch(() => []);
+    const planos = unicos([PLANO_PADRAO, ...(S.valores || []).map(v => v.plano), ...ps.map(p => (p.convenio || '').trim())]);
+    const servs = unicos([...(S.valores || []).map(v => v.servico), ...SERVICOS_SUGERIDOS]);
+    abrirDialogo({
+      titulo: novo ? 'Novo valor' : 'Editar valor',
+      corpo: `<form id="f-val" class="stack" novalidate>
+        ${campo('Clínica', `<select id="vl-cl">${S.clinicas.map(c => `<option value="${esc(c.id)}" ${c.id === V.clinica_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>`)}
+        ${campo('Serviço', `<input id="vl-sv" list="vl-dls" value="${esc(V.servico)}" placeholder="Ex.: Consulta + preventivo" autocomplete="off">`)}
+        ${campo('Plano / convênio', `<input id="vl-pl" list="vl-dlp" value="${esc(V.plano)}" placeholder="Ex.: Particular, Unimed, Bradesco…" autocomplete="off">`)}
+        ${campo('Valor que você recebe (R$)', `<input id="vl-v" inputmode="decimal" value="${esc(fmtValor(V.valor))}" placeholder="0,00" autocomplete="off">`)}
+        <datalist id="vl-dls">${servs.map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="vl-dlp">${planos.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+        <p class="small muted">Use um nome por combinação de serviços (ex.: “Consulta + preventivo”), como a clínica paga.</p></form>`,
+      rodape: `${novo ? '' : `<button class="btn btn-danger" data-del>${ICON.trash}Excluir</button>`}<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar</button>`,
+      aoAbrir: (d, fechar) => {
+        d.querySelector('#vl-v').addEventListener('blur', e => { if (e.target.value.trim()) e.target.value = fmtValor(parseValor(e.target.value)); });
+        d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+          const sv = d.querySelector('#vl-sv'), pl = d.querySelector('#vl-pl'), vv = d.querySelector('#vl-v');
+          const valor = parseValor(vv.value); let ok = true;
+          if (!sv.value.trim()) { erroCampo(sv, 'Informe o serviço.'); ok = false; } else erroCampo(sv);
+          if (!pl.value.trim()) { erroCampo(pl, 'Informe o plano (ou “Particular”).'); ok = false; } else erroCampo(pl);
+          if (valor == null) { erroCampo(vv, 'Informe o valor.'); ok = false; } else erroCampo(vv);
+          if (!ok) return;
+          const clinica_id = d.querySelector('#vl-cl').value;
+          const dup = (S.valores || []).find(x => x.id !== orig.id && x.clinica_id === clinica_id && norm(x.servico).trim() === norm(sv.value).trim() && norm(x.plano).trim() === norm(pl.value).trim());
+          if (dup) { erroCampo(sv, 'Já existe valor para este serviço e plano nesta clínica — edite o existente.'); return; }
+          try { await DB.valores.save({ ...(novo ? {} : { id: orig.id }), clinica_id, servico: sv.value.trim(), plano: pl.value.trim(), valor }); S.valores = await DB.valores.list(); clinicaValores = clinica_id; toast(novo ? 'Valor cadastrado.' : 'Valor atualizado.'); fechar(); depois && depois(); } catch (err) { falha(err); }
+        }));
+        const del = d.querySelector('[data-del]');
+        if (del) del.addEventListener('click', async () => {
+          fechar();
+          if (!(await confirmar(`Excluir o valor de “${orig.servico}” · ${orig.plano}? As consultas já registradas mantêm o valor que tinham.`, { ok: 'Excluir', perigo: true, titulo: 'Excluir valor' }))) return;
+          try { await DB.valores.remove(orig.id); S.valores = await DB.valores.list(); toast('Valor excluído.'); depois && depois(); } catch (err) { falha(err); }
+        });
+      }
+    });
+  }
+  function dialogoCopiarValores(outras, depois) {
+    abrirDialogo({
+      titulo: 'Copiar valores de outra clínica',
+      corpo: `<div class="stack"><p>Os serviços e planos da clínica escolhida são copiados para <b>${esc((clinicaPorId(clinicaValores) || {}).nome || '')}</b>, com os mesmos valores. Os que já existem aqui não mudam.</p>${campo('Copiar de', `<select id="cp-de">${outras.map(c => `<option value="${esc(c.id)}">${esc(c.nome)} (${valoresDa(c.id).length})</option>`).join('')}</select>`)}</div>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Copiar</button>`,
+      aoAbrir: (d, fechar) => d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+        const de = d.querySelector('#cp-de').value; let n = 0;
+        try {
+          for (const v of valoresDa(de)) if (valorTabela(clinicaValores, v.servico, v.plano) == null) { await DB.valores.save({ clinica_id: clinicaValores, servico: v.servico, plano: v.plano, valor: v.valor }); n++; }
+          S.valores = await DB.valores.list(); toast(n ? `${n} ${n === 1 ? 'valor copiado' : 'valores copiados'} — ajuste o que for diferente.` : 'Nada novo para copiar.'); fechar(); depois && depois();
+        } catch (err) { falha(err); }
+      }))
+    });
+  }
+
+  /* =====================================================================
+     Produção: quanto foi atendido e recebido, por período
+     ===================================================================== */
+  let PROD = { periodo: 'mes', clinica: '', de: '', ate: '' };
+  const PERIODOS_PROD = [['hoje', 'Hoje'], ['semana', 'Esta semana'], ['mes', 'Este mês'], ['mes_ant', 'Mês passado'], ['ano', 'Este ano'], ['pers', 'Personalizado']];
+  function intervaloProd() {
+    const h = new Date(); h.setHours(0, 0, 0, 0); let a, b;
+    if (PROD.periodo === 'hoje') { a = h; b = new Date(h); b.setDate(b.getDate() + 1); }
+    else if (PROD.periodo === 'semana') { a = new Date(h); a.setDate(a.getDate() - ((a.getDay() + 6) % 7)); b = new Date(a); b.setDate(b.getDate() + 7); }
+    else if (PROD.periodo === 'mes_ant') { a = new Date(h.getFullYear(), h.getMonth() - 1, 1); b = new Date(h.getFullYear(), h.getMonth(), 1); }
+    else if (PROD.periodo === 'ano') { a = new Date(h.getFullYear(), 0, 1); b = new Date(h.getFullYear() + 1, 0, 1); }
+    else if (PROD.periodo === 'pers' && PROD.de && PROD.ate) { a = new Date(PROD.de + 'T00:00:00'); b = new Date(PROD.ate + 'T00:00:00'); b.setDate(b.getDate() + 1); }
+    else { a = new Date(h.getFullYear(), h.getMonth(), 1); b = new Date(h.getFullYear(), h.getMonth() + 1, 1); }
+    return [a, b];
+  }
+  async function viewProducao(main) {
+    main.innerHTML = `<div class="skeleton"></div>`;
+    const [ps, cs] = await Promise.all([pacientes(true), DB.consultas.list()]);
+    const nomeP = id => (ps.find(p => p.id === id) || {}).nome || 'Paciente';
+    const rot = {}; ps.forEach(p => Object.assign(rot, rotulosConsultas(p.consultas)));
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    if (!PROD.de) PROD.de = hojeISO.slice(0, 8) + '01'; if (!PROD.ate) PROD.ate = hojeISO;
+    main.innerHTML = `
+      <div class="page-head"><div><h1>Produção</h1><p class="muted small">Atendimentos e valores a receber, pelo plano e serviço registrados em cada consulta.</p></div>
+        <div class="actions"><a class="btn btn-ghost" href="#valores">${ICON.cash}Tabela de valores</a><button class="btn btn-ghost" data-x="csv">${ICON.download}Baixar planilha</button></div></div>
+      <section class="card filtros" aria-label="Período e clínica">
+        <div class="filter-chips" role="group" aria-label="Período">${PERIODOS_PROD.map(([k, t]) => `<button type="button" data-pp="${k}" aria-pressed="${k === PROD.periodo}">${t}</button>`).join('')}</div>
+        <div class="filtros-grid" style="margin-top:12px">
+          ${campo('Clínica', `<select id="pr-cl"><option value="">Todas as clínicas</option>${S.clinicas.map(c => `<option value="${esc(c.id)}" ${c.id === PROD.clinica ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>`)}
+          <span class="pers" ${PROD.periodo === 'pers' ? '' : 'hidden'}>${campo('De', `<input id="pr-de" type="date" value="${esc(PROD.de)}">`)}</span>
+          <span class="pers" ${PROD.periodo === 'pers' ? '' : 'hidden'}>${campo('Até', `<input id="pr-ate" type="date" value="${esc(PROD.ate)}">`)}</span>
+        </div>
+      </section>
+      <div id="pr-corpo"></div>`;
+    let linhas = [];
+    const desenhar = () => {
+      const [a, b] = intervaloProd();
+      linhas = cs.filter(c => { const d = new Date(c.data); return d >= a && d < b && (!PROD.clinica || c.clinica_id === PROD.clinica); }).sort((x, y) => new Date(y.data) - new Date(x.data));
+      const total = linhas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+      const semValor = linhas.filter(c => c.valor == null);
+      const agrupar = f => { const m = {}; linhas.forEach(c => { const k = f(c) || '—'; (m[k] = m[k] || { n: 0, v: 0 }); m[k].n++; m[k].v += Number(c.valor) || 0; }); return Object.entries(m).sort((x, y) => y[1].v - x[1].v || y[1].n - x[1].n); };
+      const tabela = (tit, lst) => `<section class="card resumo-prod"><h2>${tit}</h2>${lst.length ? `<ul>${lst.map(([k, x]) => `<li><span class="wrap-any">${esc(k)}</span><span class="muted">${x.n}</span><b>${PDF.brl(x.v)}</b></li>`).join('')}</ul>` : '<p class="muted small">Nada no período.</p>'}</section>`;
+      const per = PERIODOS_PROD.find(x => x[0] === PROD.periodo)[1];
+      $('#pr-corpo', main).innerHTML = `
+        <p class="small muted" style="margin:4px 0 12px">${esc(per)}: ${fmtData(a.toISOString())} a ${fmtData(new Date(b - 1).toISOString())}${PROD.clinica ? ` · ${esc((clinicaPorId(PROD.clinica) || {}).nome || '')}` : ''}</p>
+        <div class="stats prod-stats" role="list">
+          <div class="stat destaque" role="listitem"><b>${PDF.brl(total)}</b><span>a receber no período</span></div>
+          <div class="stat" role="listitem"><b>${linhas.length}</b><span>${linhas.length === 1 ? 'atendimento' : 'atendimentos'}</span></div>
+          <div class="stat" role="listitem"><b>${linhas.length - semValor.length ? PDF.brl(total / (linhas.length - semValor.length)) : '—'}</b><span>média por atendimento</span></div>
+        </div>
+        ${semValor.length ? `<div class="alert" style="margin:12px 0">${ICON.alert}<p><b>${semValor.length} ${semValor.length === 1 ? 'atendimento sem valor' : 'atendimentos sem valor'}.</b> Abra a consulta e escolha o serviço e o plano (ou cadastre o valor na tabela).</p></div>` : ''}
+        <div class="prod-grid">${tabela('Por clínica', agrupar(c => (clinicaPorId(c.clinica_id) || {}).nome))}${tabela('Por plano', agrupar(c => c.plano || PLANO_PADRAO))}${tabela('Por serviço', agrupar(c => c.servico || 'Serviço não informado'))}</div>
+        <h2 class="rule">Atendimentos</h2>
+        ${linhas.length ? `<ul class="list">${linhas.map(c => { const r = rot[c.id] || rotulosConsultas([c])[c.id]; const cl = clinicaPorId(c.clinica_id); return `<li><a class="row" href="#consulta-${esc(c.id)}"><span class="grow"><span class="title nome-selo">${esc(nomeP(c.paciente_id))}${seloArea(r.area, r.rotulo)}</span><span class="meta"><span>${fmtData(c.data)} · ${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span><span>${esc(c.plano || PLANO_PADRAO)}</span><span>${esc(c.servico || 'serviço não informado')}</span></span></span>${c.valor != null ? `<b class="valor">${PDF.brl(c.valor)}</b>` : '<span class="chip warn">Sem valor</span>'}${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`; }).join('')}</ul>` : `<div class="empty"><h3>Nenhum atendimento no período</h3></div>`}`;
+    };
+    $$('[data-pp]', main).forEach(b => b.addEventListener('click', () => { PROD.periodo = b.dataset.pp; $$('[data-pp]', main).forEach(x => x.setAttribute('aria-pressed', String(x === b))); $$('.pers', main).forEach(x => { x.hidden = PROD.periodo !== 'pers'; }); desenhar(); }));
+    $('#pr-cl', main).addEventListener('change', e => { PROD.clinica = e.target.value; desenhar(); });
+    $('#pr-de', main).addEventListener('change', e => { PROD.de = e.target.value; desenhar(); });
+    $('#pr-ate', main).addEventListener('change', e => { PROD.ate = e.target.value; desenhar(); });
+    main.querySelector('[data-x="csv"]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+      const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+      const cab = ['Data', 'Hora', 'Paciente', 'Clínica', 'Área', 'Atendimento', 'Plano', 'Serviço', 'Valor (R$)'];
+      const rows = linhas.map(c => { const r = rot[c.id] || rotulosConsultas([c])[c.id]; return [fmtData(c.data), fmtHora(c.data), nomeP(c.paciente_id), (clinicaPorId(c.clinica_id) || {}).nome || '', r.area, r.rotulo, c.plano || PLANO_PADRAO, c.servico || '', c.valor != null ? fmtValor(c.valor) : '']; });
+      const csv = '﻿' + [cab, ...rows].map(l => l.map(q).join(';')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const nome = `producao-${new Date().toISOString().slice(0, 10)}.csv`;
+      try {
+        if (downloadsCap) await downloadsCap.save({ filename: nome, data: blob });
+        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000); }
+        toast('Planilha gerada (abre no Excel ou Google Planilhas).');
+      } catch (err) { toast('O download foi cancelado ou bloqueado.', true); }
+    }));
+    desenhar();
+  }
+
+  /* =====================================================================
      Clínicas
      ===================================================================== */
   async function viewClinicas(main) {
     S.clinicas = await DB.clinicas.list();
     const ps = await pacientes(true);
     main.innerHTML = `
-      <div class="page-head"><div><h1>Clínicas</h1><p class="muted small">O nome, o endereço e o telefone da clínica saem no cabeçalho e no rodapé dos documentos.</p></div><button class="btn btn-primary" data-x="nova">${ICON.plus}Nova clínica</button></div>
+      <div class="page-head"><div><h1>Clínicas</h1><p class="muted small">O nome, o endereço e o telefone da clínica saem no cabeçalho e no rodapé dos documentos.</p></div><div class="actions"><a class="btn btn-ghost" href="#valores">${ICON.cash}Tabela de valores</a><a class="btn btn-ghost" href="#producao">Produção</a><button class="btn btn-primary" data-x="nova">${ICON.plus}Nova clínica</button></div></div>
       ${S.clinicas.length ? `<ul class="list">${S.clinicas.map(c => { const n = ps.filter(p => p.clinicas.includes(c.id)).length; return `<li><button type="button" class="row" data-id="${esc(c.id)}"><span class="avatar" aria-hidden="true">${ICON.clinic.replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(c.nome)} ${c.ativa === false ? '<span class="chip">Inativa</span>' : ''}</span><span class="meta"><span>${esc([c.endereco, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/')].filter(Boolean).join(', ') || 'Endereço não informado')}</span>${c.telefone ? `<span>${esc(c.telefone)}</span>` : ''}<span>${n} ${n === 1 ? 'paciente' : 'pacientes'}</span></span></span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`; }).join('')}</ul>`
         : `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhuma clínica cadastrada</h3><p>Cadastre cada local onde você atende. Uma mesma paciente pode ser vinculada a várias clínicas.</p><button class="btn btn-primary" data-x="nova2">${ICON.plus}Cadastrar clínica</button></div>`}`;
     const abrir = c => dialogoClinica(c, () => viewClinicas(main));
