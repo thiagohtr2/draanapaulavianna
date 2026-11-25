@@ -20,6 +20,7 @@ create table if not exists public.perfis (
   cidade        text not null default '',
   pdf_tamanho   text not null default 'A4' check (pdf_tamanho in ('A4','A5')),
   pdf_marca_dagua boolean not null default true,
+  modelos_iniciados boolean not null default false,  -- modelos sugeridos já carregados?
   criado_em     timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
@@ -259,3 +260,6 @@ drop policy if exists modelos_dono on public.modelos;
 create policy modelos_dono on public.modelos for all to authenticated
   using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 revoke all on public.modelos from anon;
+
+-- Bancos criados antes desta coluna existir
+alter table public.perfis add column if not exists modelos_iniciados boolean not null default false;

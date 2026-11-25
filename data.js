@@ -160,7 +160,7 @@
     clinicas.remove = async (id) => { const d = load(); if (d.consultas.some(c => c.clinica_id === id) || d.pc.some(x => x.clinica_id === id)) throw new Error('Há pacientes ou consultas ligadas a esta clínica; ela não pode ser excluída. Você pode marcá-la como inativa.'); d.clinicas = d.clinicas.filter(x => x.id !== id); persist(); };
     const favoritos = coll('favoritos', porNome);
     const modelos = coll('modelos', porNome);
-    modelos.saveMany = async (lista) => { const out = []; for (const m of lista) out.push(await modelos.save(m)); return out; };
+    modelos.saveMany = async (lista) => { const d = load(); const novos = lista.map(m => ({ ...m, id: uuid(), criado_em: agora() })); d.modelos.push(...novos); persist(); return tick(novos); };
     const pacientes = {
       async list() { const d = load(); const ult = {}; [...d.consultas].sort((a, b) => b.data.localeCompare(a.data)).forEach(c => { if (!ult[c.paciente_id]) ult[c.paciente_id] = c.data; }); return tick(d.pacientes.map(p => ({ ...p, clinicas: d.pc.filter(x => x.paciente_id === p.id).map(x => x.clinica_id), ultima: ult[p.id] || null })).sort(porNome)); },
       async get(id) { const d = load(); const p = d.pacientes.find(x => x.id === id); return p ? tick({ ...p, clinicas: d.pc.filter(x => x.paciente_id === id).map(x => x.clinica_id) }) : null; },
@@ -189,22 +189,16 @@
     return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
   }
 
-  // Modelos de exemplo da demonstração (conteúdo ilustrativo, para a médica revisar e adaptar)
+  // Na demonstração, os modelos sugeridos já vêm carregados
   function seedModelos() {
-    const base = (window.MODELOS_BASE || []).map(m => ({ ...m, id: uuid(), criado_em: agora() }));
-    return base.concat([
-      { id: uuid(), tipo: 'exames', nome: 'Investigação inicial de infertilidade (exemplo)', conteudo: { exames: [{ nome: 'Hormônio antimülleriano (AMH)' }, { nome: 'FSH, LH e estradiol no 3º dia do ciclo' }, { nome: 'TSH e T4 livre' }, { nome: 'Prolactina' }, { nome: 'Ultrassonografia transvaginal com contagem de folículos antrais' }], indicacao: 'Investigação de infertilidade conjugal.' } },
-      { id: uuid(), tipo: 'prescricao', nome: 'Pré-concepcional (exemplo)', conteudo: { itens: [{ nome: 'Ácido fólico', apresentacao: '5 mg', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido ao dia, de uso contínuo.', antimicrobiano: false, controlado: false }], orientacoes: '- Manter alimentação equilibrada e atividade física regular.\n- Retorno com os exames solicitados.' } },
-      { id: uuid(), tipo: 'texto', nome: 'Exame ginecológico sem alterações', conteudo: { campo: 'exame_gineco', auto: true, texto: 'Vulva e vagina sem lesões. Especular: colo epitelizado, conteúdo vaginal fisiológico. Toque: útero de volume normal, móvel, indolor; anexos não palpáveis.' } },
-      { id: uuid(), tipo: 'texto', nome: 'Exame físico geral normal', conteudo: { campo: 'exame_fisico', auto: true, texto: 'Bom estado geral, corada, hidratada, eupneica. Mamas simétricas, sem nódulos palpáveis ou descarga papilar; axilas livres.' } }
-    ]);
+    return (window.MODELOS_BASE || []).map(m => ({ ...JSON.parse(JSON.stringify(m)), id: uuid(), criado_em: agora() }));
   }
 
   function seed() {
     const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid();
     const dias = n => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(9 + (n % 7), 30, 0, 0); return d.toISOString(); };
     return {
-      perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true },
+      perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true, modelos_iniciados: true },
       clinicas: [
         { id: c1, nome: 'Clínica Vida Mulher', endereco: 'Av. Tancredo Neves, 1000, sala 501', bairro: 'Caminho das Árvores', cidade: 'Salvador', uf: 'BA', cep: '41820-020', telefone: '(71) 3000-0000', email: 'contato@vidamulher.exemplo', ativa: true },
         { id: c2, nome: 'Centro Médico Ondina', endereco: 'Rua Exemplo, 45', bairro: 'Ondina', cidade: 'Salvador', uf: 'BA', cep: '40170-000', telefone: '(71) 3111-1111', email: '', ativa: true }

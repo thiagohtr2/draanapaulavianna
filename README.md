@@ -39,12 +39,19 @@ Depois aponte um domínio próprio, se quiser.
 ## Modelos e textos padrão
 - **Modelos** (menu): prescrições prontas, pacotes de exames, atestados e textos padrão
   de qualquer campo da consulta (exame físico, exame ginecológico, conduta…).
+- No primeiro acesso, a conta recebe **modelos sugeridos** para todos os campos e documentos
+  (selo “Sugerido”). Abra, ajuste e salve: vira o seu padrão. “Restaurar sugestões” traz de volta
+  as que tiverem sido apagadas.
 - Na consulta: **Usar modelo** (substitui ou adiciona ao que já existe) e **Salvar como modelo**.
 - Em toda área de texto há o botão **Padrões**: insere um texto salvo para só editar.
   Um padrão marcado como **automático** já vem preenchido em toda nova consulta.
 - Atestados aceitam campos automáticos: {paciente} {cpf} {data} {hora} {idade} {clinica};
   {dias} e qualquer outro {campo} são perguntados na hora. O CID só sai com a autorização
   expressa da paciente (Resolução CFM 2.381/2024).
+
+## Pacientes
+Busca por nome, CPF, telefone, e-mail ou convênio; ordenação por nome (A–Z/Z–A), última consulta,
+clínica (agrupado), idade ou cadastro; filtros por clínica, período da última consulta e convênio.
 
 ## Sobre os documentos
 - **Receituário simples**: medicamentos agrupados por via de uso, orientações, assinatura e rodapé da clínica.

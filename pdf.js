@@ -34,7 +34,7 @@
     const f = window.ASSETS.fonts;
     const add = (file, fam) => { doc.addFileToVFS(file + '.ttf', f[file]); doc.addFont(file + '.ttf', fam, 'normal'); };
     add('jost-regular', 'Jost'); add('jost-medium', 'JostM'); add('jost-light', 'JostL');
-    add('cg-medium', 'Corm'); add('cg-semibold', 'CormSB'); add('cg-italic', 'CormI');
+    add('cg-medium', 'Corm'); add('cg-semibold', 'CormSB'); add('cg-italic', 'CormI'); add('italiana', 'Ital');
   }
 
   /* ---------- geometria por tamanho de papel ---------- */
@@ -72,10 +72,17 @@
   function desenharCabecalho(ctx, secao) {
     const { doc, g } = ctx; const { W, M } = g;
     const A = window.ASSETS.img;
-    const lw = g.logoW, lh = lw * 516 / 900;
-    const top = g.k < 1 ? 8 : 11;
-    doc.addImage(A['logo-main'], 'PNG', (W - lw) / 2, top, lw, lh, 'logoMain', 'SLOW');
-    let y = top + lh + (g.k < 1 ? 4 : 5.5);
+    // símbolo da logomarca + nome da médica (texto) + especialidade
+    const top = g.k < 1 ? 7 : 9;
+    const sh = (g.k < 1 ? 14 : 18), sw = sh * 400 / 451;
+    doc.addImage(A['logo-symbol'], 'PNG', (W - sw) / 2, top, sw, sh, 'logoSym', 'SLOW');
+    let y = top + sh + (g.k < 1 ? 5.6 : 7.2);
+    setF(doc, 'Ital', fs(g, 21), C.wine);
+    doc.text(ctx.medico.nomeCompleto, W / 2, y, { align: 'center' });
+    y += g.k < 1 ? 4.2 : 5.2;
+    setF(doc, 'Jost', fs(g, 6.9), C.mauve);
+    tracked(doc, (ctx.medico.especialidade || '').toUpperCase(), W / 2, y, 1.25 * g.k, { align: 'center' });
+    y += g.k < 1 ? 6 : 7.5;
 
     // régua com o nome da clínica no centro (eco da régua da logomarca)
     const clin = (ctx.clinica.nome || '').toUpperCase();

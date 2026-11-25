@@ -53,6 +53,10 @@
     open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
   };
 
+  const MARCA_NOME = 'Dra. Ana Paula Vianna', MARCA_ESP = 'Ginecologia e Fertilidade';
+  const marca = (cls, tag = 'p') => `<div class="marca ${cls}"><img src="${A['logo-symbol']}" alt=""><${tag} class="marca-nome">${MARCA_NOME}</${tag}><p class="marca-esp">${MARCA_ESP}</p></div>`;
+  const temAlergia = t => !!(t && t.trim() && !/^\s*(nega|sem\s|nenhum|nenhuma|não\s|nao\s)/i.test(t));
+
   /* ---------------- estado ---------------- */
   const S = { user: null, perfil: null, clinicas: [], pacientes: null, favoritos: [], modelos: [] };
   async function carregarBase() {
@@ -124,9 +128,9 @@
   let reconhecedor = null;
   function areaTexto(id, name, valor, { rot, linhas = 4, ph = '', padrao = true, campo } = {}) {
     const key = campo || String(name || '').replace(/^registro\./, '');
-    const mic = SR ? `<button type="button" class="icon-btn mic" data-mic="${id}" aria-pressed="false" aria-label="Ditar ${esc(rot || '')} por voz">${ICON.mic}</button>` : '';
+    const mic = SR ? `<button type="button" class="tool-btn mic" data-mic="${id}" aria-pressed="false" aria-label="Ditar ${esc(rot || '')} por voz">${ICON.mic}</button>` : '';
     const pad = padrao && key ? `<button type="button" class="pad-btn" data-padrao="${esc(key)}" data-alvo="${id}" data-rot="${esc(rot || '')}" aria-label="Textos padrão de ${esc(rot || '')}">${ICON.text}<span>Padrões</span></button>` : '';
-    return `<div class="field"><label for="${id}" class="label">${rot}</label><div class="ta-wrap"><textarea id="${id}" name="${name}" rows="${linhas}" placeholder="${esc(ph)}">${esc(valor)}</textarea><div class="ta-tools">${mic}${pad}</div></div></div>`;
+    return `<div class="field"><div class="ta-head"><label for="${id}" class="label">${rot}</label>${mic || pad ? `<div class="ta-tools">${mic}${pad}</div>` : ''}</div><textarea id="${id}" name="${name}" rows="${linhas}" placeholder="${esc(ph)}">${esc(valor)}</textarea></div>`;
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-mic]'); if (!b || !SR) return;
@@ -188,10 +192,10 @@
     document.getElementById('root').innerHTML = `
       <main class="auth" id="main">
         <div class="box">
-          <img class="logo" src="${A['logo-full']}" alt="Ana Paula Vianna — Ginecologia e Fertilidade">
+          ${marca('marca-login', 'h1')}
           <div class="card">
             ${modo === 'recuperar' ? `
-              <h1 style="font-size:1.8rem">Recuperar senha</h1>
+              <h2 style="font-size:1.8rem">Recuperar senha</h2>
               <p class="muted small" style="margin:.4rem 0 1rem">Enviaremos um link para criar uma nova senha.</p>
               <form id="f-auth" class="stack" novalidate>
                 ${campo('E-mail', `<input id="a-email" name="email" type="email" autocomplete="email" inputmode="email" required>`)}
@@ -271,7 +275,7 @@
       <a class="sr-only" href="#main" id="skip">Pular para o conteúdo</a>
       <div class="app logado">
         <aside class="sidebar" aria-label="Menu principal">
-          <img class="logo" src="${A['logo-main']}" alt="Ana Paula Vianna — Ginecologia e Fertilidade">
+          ${marca('marca-side')}
           <nav aria-label="Seções">${NAV.map(([r, t, i]) => `<a href="#${r}" data-nav="${r}">${ICON[i]}<span>${t}</span></a>`).join('')}</nav>
           <button class="btn btn-primary cta" data-acao="nova-consulta">${ICON.plus}Nova consulta</button>
           <div class="who"><b>${esc(nomeMedica())}</b><br><span class="wrap-any">${esc(S.user.email || '')}</span></div>
@@ -279,7 +283,7 @@
         <div>
           ${demo ? `<div class="demo-banner" role="note"><b>Modo demonstração:</b> dados de exemplo, salvos só neste navegador. Não use dados reais de pacientes.</div>` : ''}
           <header class="topbar logado">
-            <a class="brand" href="#inicio" aria-label="Início"><img src="${A['logo-symbol']}" alt=""><span><b>Ana Paula Vianna</b><small>Ginecologia e Fertilidade</small></span></a>
+            <a class="brand" href="#inicio" aria-label="Início"><img src="${A['logo-symbol']}" alt=""><span><b>${MARCA_NOME}</b><small>${MARCA_ESP}</small></span></a>
             <span class="spacer"></span>
             <button class="icon-btn" data-acao="nova-consulta" aria-label="Nova consulta">${ICON.plus}</button>
           </header>
@@ -360,34 +364,80 @@
      Pacientes
      ===================================================================== */
   let filtroClinica = '';
+  const FP_KEY = 'apv-filtros-pacientes';
+  const FP_PADRAO = { busca: '', ordem: 'nome', clinica: '', periodo: '', convenio: '' };
+  let FP = (() => { try { return { ...FP_PADRAO, ...JSON.parse(localStorage.getItem(FP_KEY) || '{}'), busca: '' }; } catch (e) { return { ...FP_PADRAO }; } })();
+  const salvarFP = () => { try { localStorage.setItem(FP_KEY, JSON.stringify({ ...FP, busca: '' })); } catch (e) { /* sem armazenamento */ } };
+  const ORDENS = [['nome', 'Nome (A–Z)'], ['nome_desc', 'Nome (Z–A)'], ['ultima', 'Última consulta (mais recente)'], ['ultima_antiga', 'Última consulta (mais antiga)'], ['clinica', 'Clínica (agrupar)'], ['idade', 'Idade (mais nova)'], ['idade_desc', 'Idade (mais velha)'], ['cadastro', 'Cadastro mais recente']];
+  const PERIODOS = [['', 'Qualquer data'], ['30', 'Nos últimos 30 dias'], ['180', 'Nos últimos 6 meses'], ['365+', 'Há mais de 1 ano'], ['nunca', 'Nunca consultou']];
+
   async function viewPacientes(main) {
     main.innerHTML = `<div class="skeleton"></div>`;
     const ps = await pacientes(true);
+    if (filtroClinica) { FP.clinica = filtroClinica; filtroClinica = ''; }
+    if (FP.clinica && !S.clinicas.some(c => c.id === FP.clinica)) FP.clinica = '';
+    const convenios = [...new Set(ps.map(p => (p.convenio || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (FP.convenio && !convenios.includes(FP.convenio)) FP.convenio = '';
+    const sel = (id, rot, opts, val) => campo(rot, `<select id="${id}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`);
     main.innerHTML = `
       <div class="page-head"><div><h1>Pacientes</h1><p class="muted small">${ps.length} ${ps.length === 1 ? 'paciente cadastrada' : 'pacientes cadastradas'}</p></div>
         <button class="btn btn-primary" data-x="nova">${ICON.plus}Nova paciente</button></div>
-      <div class="stack">
-        <div class="search"><label class="sr-only" for="busca">Buscar paciente</label>${ICON.search}<input id="busca" type="search" placeholder="Buscar por nome, CPF ou telefone" autocomplete="off"></div>
-        ${S.clinicas.length > 1 ? `<div class="filter-chips" role="group" aria-label="Filtrar por clínica"><button type="button" data-cl="" aria-pressed="${!filtroClinica}">Todas</button>${S.clinicas.map(c => `<button type="button" data-cl="${esc(c.id)}" aria-pressed="${filtroClinica === c.id}">${esc(c.nome)}</button>`).join('')}</div>` : ''}
-        <div id="lista-p" aria-live="polite"></div>
-      </div>`;
+      <section class="card filtros" aria-label="Busca e filtros">
+        <div class="search"><label class="sr-only" for="busca">Buscar paciente</label>${ICON.search}<input id="busca" type="search" placeholder="Buscar por nome, CPF, telefone, e-mail ou convênio" autocomplete="off" value="${esc(FP.busca)}"></div>
+        <div class="filtros-grid">
+          ${sel('f-ordem', 'Ordenar por', ORDENS, FP.ordem)}
+          ${sel('f-clinica', 'Clínica', [['', 'Todas as clínicas'], ...S.clinicas.map(c => [c.id, c.nome]), ['__sem', 'Sem clínica vinculada']], FP.clinica)}
+          ${sel('f-periodo', 'Última consulta', PERIODOS, FP.periodo)}
+          ${sel('f-convenio', 'Convênio', [['', 'Todos'], ...convenios.map(c => [c, c])], FP.convenio)}
+        </div>
+        <div class="filtros-foot"><p class="small muted" id="res-count" aria-live="polite"></p><button type="button" class="btn btn-quiet" data-x="limpar">Limpar filtros</button></div>
+      </section>
+      <div id="lista-p"></div>`;
     const lista = $('#lista-p', main), busca = $('#busca', main);
+    const agoraMs = Date.now(), DIA = 864e5;
+    const idadeAnos = p => { if (!p.data_nascimento) return null; const d = new Date(p.data_nascimento + 'T12:00:00'); return (agoraMs - d) / (365.25 * DIA); };
+    const linha = p => `<li><a class="row" href="#paciente-${esc(p.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(p.nome))}</span><span class="grow"><span class="title">${esc(p.nome)}</span><span class="meta">${idade(p.data_nascimento) ? `<span>${idade(p.data_nascimento)}</span>` : ''}${p.convenio ? `<span>${esc(p.convenio)}</span>` : ''}${p.ultima ? `<span>Última consulta ${fmtData(p.ultima)}</span>` : '<span>Sem consultas</span>'}</span>${p.clinicas.length ? `<span class="chips">${p.clinicas.map(id => clinicaPorId(id)).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>` : ''}</span>${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`;
     const desenhar = () => {
-      const q = norm(busca.value).trim(); const qd = q.replace(/\D/g, '');
-      const fs = ps.filter(p => (!filtroClinica || p.clinicas.includes(filtroClinica)) && (!q || norm(p.nome).includes(q) || norm(p.nome_social).includes(q) || (qd.length >= 3 && ((p.cpf || '').replace(/\D/g, '').includes(qd) || (p.telefone || '').replace(/\D/g, '').includes(qd)))));
+      FP.busca = busca.value; salvarFP();
+      const q = norm(FP.busca).trim(); const qd = q.replace(/\D/g, '');
+      let fs = ps.filter(p => {
+        if (q && !(norm(p.nome).includes(q) || norm(p.nome_social).includes(q) || norm(p.email).includes(q) || norm(p.convenio).includes(q) || (qd.length >= 3 && ((p.cpf || '').replace(/\D/g, '').includes(qd) || (p.telefone || '').replace(/\D/g, '').includes(qd))))) return false;
+        if (FP.clinica === '__sem' ? p.clinicas.length : FP.clinica && !p.clinicas.includes(FP.clinica)) return false;
+        if (FP.convenio && (p.convenio || '').trim() !== FP.convenio) return false;
+        if (FP.periodo) {
+          const dias = p.ultima ? (agoraMs - new Date(p.ultima)) / DIA : null;
+          if (FP.periodo === 'nunca') { if (dias !== null) return false; }
+          else if (FP.periodo === '365+') { if (dias === null || dias <= 365) return false; }
+          else if (dias === null || dias > +FP.periodo) return false;
+        }
+        return true;
+      });
+      const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
+      const porData = (k, dir) => (a, b) => { const x = a[k] || '', y = b[k] || ''; if (!x && !y) return porNome(a, b); if (!x) return 1; if (!y) return -1; return dir * x.localeCompare(y) || porNome(a, b); };
+      const porIdade = dir => (a, b) => { const x = idadeAnos(a), y = idadeAnos(b); if (x === null && y === null) return porNome(a, b); if (x === null) return 1; if (y === null) return -1; return dir * (x - y) || porNome(a, b); };
+      const ord = { nome: porNome, nome_desc: (a, b) => -porNome(a, b), ultima: porData('ultima', -1), ultima_antiga: porData('ultima', 1), idade: porIdade(1), idade_desc: porIdade(-1), cadastro: porData('criado_em', -1), clinica: porNome }[FP.ordem] || porNome;
+      fs = fs.sort(ord);
+      const ativos = [FP.busca.trim(), FP.clinica, FP.periodo, FP.convenio].filter(Boolean).length;
+      $('#res-count', main).textContent = ps.length ? `${fs.length} de ${ps.length} ${ps.length === 1 ? 'paciente' : 'pacientes'}${ativos ? ` · ${ativos} ${ativos === 1 ? 'filtro ativo' : 'filtros ativos'}` : ''}` : '';
+      main.querySelector('[data-x="limpar"]').hidden = !ativos;
       if (!ps.length) { lista.innerHTML = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhuma paciente ainda</h3><p>Cadastre a primeira paciente e vincule às clínicas onde ela é atendida.</p><button class="btn btn-primary" data-x="nova2">${ICON.plus}Cadastrar paciente</button></div>`; lista.querySelector('[data-x="nova2"]').addEventListener('click', nova); return; }
-      if (!fs.length) { lista.innerHTML = `<div class="empty"><h3>Nenhuma paciente encontrada</h3><p>Confira a grafia ou limpe o filtro de clínica.</p></div>`; return; }
-      lista.innerHTML = `<ul class="list">${fs.map(p => `<li><a class="row" href="#paciente-${esc(p.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(p.nome))}</span><span class="grow"><span class="title">${esc(p.nome)}</span><span class="meta">${idade(p.data_nascimento) ? `<span>${idade(p.data_nascimento)}</span>` : ''}${p.ultima ? `<span>Última consulta ${fmtData(p.ultima)}</span>` : '<span>Sem consultas</span>'}</span>${p.clinicas.length ? `<span class="chips">${p.clinicas.map(id => clinicaPorId(id)).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>` : ''}</span>${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`).join('')}</ul>`;
+      if (!fs.length) { lista.innerHTML = `<div class="empty"><h3>Nenhuma paciente encontrada</h3><p>Confira a grafia da busca ou limpe os filtros.</p></div>`; return; }
+      if (FP.ordem === 'clinica') {
+        const grupos = S.clinicas.map(c => [c.nome, fs.filter(p => p.clinicas.includes(c.id))]).filter(g => g[1].length);
+        const sem = fs.filter(p => !p.clinicas.length); if (sem.length) grupos.push(['Sem clínica vinculada', sem]);
+        lista.innerHTML = grupos.map(([n, l]) => `<h2 class="rule">${esc(n)} <span class="muted">(${l.length})</span></h2><ul class="list">${l.map(linha).join('')}</ul>`).join('') + (grupos.length > 1 ? `<p class="small muted" style="margin-top:12px">Pacientes atendidas em mais de uma clínica aparecem em cada uma delas.</p>` : '');
+      } else lista.innerHTML = `<ul class="list">${fs.map(linha).join('')}</ul>`;
     };
     const nova = () => dialogoPaciente(null, p => { location.hash = '#paciente-' + p.id; });
     busca.addEventListener('input', desenhar);
-    $$('[data-cl]', main).forEach(b => b.addEventListener('click', () => { filtroClinica = b.dataset.cl; $$('[data-cl]', main).forEach(x => x.setAttribute('aria-pressed', String(x === b))); desenhar(); }));
+    [['#f-ordem', 'ordem'], ['#f-clinica', 'clinica'], ['#f-periodo', 'periodo'], ['#f-convenio', 'convenio']].forEach(([id, k]) => $(id, main).addEventListener('change', e => { FP[k] = e.target.value; desenhar(); }));
+    main.querySelector('[data-x="limpar"]').addEventListener('click', () => { FP = { ...FP_PADRAO, ordem: FP.ordem }; busca.value = ''; ['#f-clinica', '#f-periodo', '#f-convenio'].forEach(id => { $(id, main).value = ''; }); desenhar(); busca.focus(); });
     main.querySelector('[data-x="nova"]').addEventListener('click', nova);
     desenhar();
   }
 
   function dialogoPaciente(p, depois) {
-    const novo = !p; p = p || { sexo: 'F', clinicas: filtroClinica ? [filtroClinica] : (S.clinicas.length === 1 ? [S.clinicas[0].id] : []) };
+    const novo = !p; p = p || { sexo: 'F', clinicas: FP.clinica && FP.clinica !== '__sem' ? [FP.clinica] : (S.clinicas.length === 1 ? [S.clinicas[0].id] : []) };
     const cls = S.clinicas;
     const corpo = `<form id="f-pac" class="grid grid-2" novalidate>
       ${campo('Nome completo *', `<input id="p-nome" name="nome" value="${esc(p.nome)}" autocomplete="off" required>`, 'span-all')}
@@ -449,7 +499,7 @@
           <div><h1 class="wrap-any" style="font-size:clamp(1.7rem,1.3rem + 1.5vw,2.3rem)">${esc(p.nome)}</h1>
             <p class="muted small">${[p.nome_social ? `Nome social: ${p.nome_social}` : '', idade(p.data_nascimento), p.data_nascimento ? `nasc. ${fmtData(p.data_nascimento)}` : '', p.convenio].filter(Boolean).map(esc).join(' · ')}</p></div></div>
         ${p.clinicas.length ? `<div class="chips" style="margin-top:12px">${p.clinicas.map(clinicaPorId).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</div>` : ''}
-        ${p.alergias ? `<div class="alert danger" style="margin-top:16px">${ICON.alert}<p><b>Alergias:</b> ${esc(p.alergias)}</p></div>` : ''}
+        ${temAlergia(p.alergias) ? `<div class="alert danger" style="margin-top:16px">${ICON.alert}<p><b>Alergias:</b> ${esc(p.alergias)}</p></div>` : ''}
         <div class="pac-facts">${fato('Telefone', p.telefone)}${fato('E-mail', p.email)}${fato('CPF', p.cpf)}${fato('Carteirinha', p.carteirinha)}${fato('Profissão', p.profissao)}${fato('Endereço', [p.endereco, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' — '))}${fato('Antecedentes', p.antecedentes)}${fato('Medicações em uso', p.medicacoes_uso)}${fato('Observações', p.observacoes)}</div>
         <div class="actions" style="margin-top:20px"><button class="btn btn-primary" data-x="nova">${ICON.plus}Nova consulta</button><button class="btn btn-ghost" data-x="editar">Editar ficha</button></div>
       </section>
@@ -574,8 +624,8 @@
   }
   function resumoFicha() {
     const itens = [['Alergias', CP.alergias], ['Antecedentes', CP.antecedentes], ['Medicações em uso', CP.medicacoes_uso]].filter(x => x[1]);
-    return `<div class="summary-card" id="resumo-ficha">${CP.alergias ? `<p class="chip danger" style="margin-bottom:8px">Alergias: ${esc(CP.alergias)}</p>` : ''}
-      ${itens.length ? `<dl>${itens.filter(x => x[0] !== 'Alergias').map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '<p class="muted small">Sem alergias, antecedentes ou medicações registrados na ficha.</p>'}
+    return `<div class="summary-card" id="resumo-ficha">${temAlergia(CP.alergias) ? `<p class="chip danger" style="margin-bottom:8px">Alergias: ${esc(CP.alergias)}</p>` : ''}
+      ${itens.length ? `<dl>${itens.filter(x => x[0] !== 'Alergias' || !temAlergia(x[1])).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '<p class="muted small">Sem alergias, antecedentes ou medicações registrados na ficha.</p>'}
       <button class="btn btn-quiet" type="button" data-x="ficha" style="margin-top:6px;padding-left:0">Editar ficha da paciente</button></div>`;
   }
 
@@ -826,7 +876,7 @@
         ${C.registro.atestado ? `<button class="btn btn-ghost" data-x="pdf-at">${ICON.doc}${esc(C.registro.atestado_titulo || 'Atestado')}</button>` : ''}
         <button class="btn btn-ghost" data-x="pdf-reg">${ICON.doc}Registro da consulta</button>
       </div>
-      ${CP.alergias ? `<div class="alert danger" style="margin-bottom:12px">${ICON.alert}<p><b>Alergias:</b> ${esc(CP.alergias)}</p></div>` : ''}
+      ${temAlergia(CP.alergias) ? `<div class="alert danger" style="margin-bottom:12px">${ICON.alert}<p><b>Alergias:</b> ${esc(CP.alergias)}</p></div>` : ''}
       ${secoes || '<div class="empty"><p>Esta consulta foi finalizada sem registros.</p></div>'}
       <section class="card" id="adendos">
         <h2 style="font-size:1.5rem;margin-bottom:12px">Adendos</h2>
@@ -957,10 +1007,16 @@
         const l = d.querySelector('#pd-l');
         const draw = () => {
           const lst = padroesDo(campoK); const cheio = !!ta.value.trim();
-          l.innerHTML = lst.length ? lst.map(m => `<li class="pad-item"><div><b>${esc(m.nome)}</b> ${(m.conteudo || {}).auto ? '<span class="chip copper">Automático</span>' : ''}<p class="small muted wrap-any">${esc(resumoModelo(m))}</p></div>
-              <div class="actions">${cheio ? `<button type="button" class="btn btn-ghost" data-usar="${esc(m.id)}" data-modo="add">Adicionar ao texto</button><button type="button" class="btn btn-primary" data-usar="${esc(m.id)}" data-modo="sub">Substituir</button>` : `<button type="button" class="btn btn-primary" data-usar="${esc(m.id)}" data-modo="sub">Usar este texto</button>`}</div></li>`).join('')
+          l.innerHTML = lst.length ? lst.map(m => `<li class="pad-item"><div><b>${esc(m.nome)}</b> ${(m.conteudo || {}).sugerido ? '<span class="chip">Sugerido</span>' : ''} ${(m.conteudo || {}).auto ? '<span class="chip copper">Automático</span>' : ''}<p class="small muted wrap-any" style="white-space:pre-wrap">${esc((m.conteudo || {}).texto || '')}</p></div>
+              <div class="actions">${cheio ? `<button type="button" class="btn btn-ghost" data-usar="${esc(m.id)}" data-modo="add">Adicionar ao texto</button><button type="button" class="btn btn-primary" data-usar="${esc(m.id)}" data-modo="sub">Substituir</button>` : `<button type="button" class="btn btn-primary" data-usar="${esc(m.id)}" data-modo="sub">Usar este texto</button>`}</div>
+              <div class="actions">${cheio && ta.value.trim() !== ((m.conteudo || {}).texto || '').trim() ? `<button type="button" class="btn btn-quiet" data-atualizar="${esc(m.id)}">Salvar o texto do campo neste padrão</button>` : ''}<button type="button" class="btn btn-quiet" data-editar="${esc(m.id)}">Editar padrão</button></div></li>`).join('')
             : `<li class="muted small">Nenhum texto padrão para este campo ainda. Escreva abaixo (ou aproveite o que já está no campo) e salve.</li>`;
           $$('[data-usar]', l).forEach(btn => btn.addEventListener('click', () => { const m = S.modelos.find(x => x.id === btn.dataset.usar); inserirNoCampo(ta, (m.conteudo || {}).texto || '', btn.dataset.modo); fechar(); toast('Texto padrão inserido — edite à vontade.'); }));
+          $$('[data-atualizar]', l).forEach(btn => btn.addEventListener('click', () => ocupado(btn, async () => {
+            const m = S.modelos.find(x => x.id === btn.dataset.atualizar);
+            try { await salvarModelo({ ...m, conteudo: { ...m.conteudo, texto: ta.value.trim(), sugerido: false } }); toast(`Padrão “${m.nome}” atualizado com o texto do campo.`); draw(); } catch (err) { falha(err); }
+          })));
+          $$('[data-editar]', l).forEach(btn => btn.addEventListener('click', () => dialogoModelo(S.modelos.find(x => x.id === btn.dataset.editar), draw)));
         };
         draw();
         const ir = d.querySelector('[data-ir-textos]'); if (ir) ir.addEventListener('click', () => { filtroModelo = 'texto'; });
@@ -1065,23 +1121,22 @@
     let corpo;
     if (!lst.length) {
       corpo = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhum modelo de ${esc(nomeT.toLowerCase())}</h3><p>${{ prescricao: 'Monte prescrições prontas (medicamentos, posologia e orientações) para aplicar com um toque na consulta.', exames: 'Monte pacotes de exames (ex.: rotina anual, investigação de infertilidade) com a indicação clínica.', atestado: 'Atestados com campos automáticos: nome, CPF, data e hora entram sozinhos; os dias de afastamento são perguntados.', texto: 'Textos padrão para qualquer campo da consulta — exame físico normal, exame ginecológico, conduta… Marque como automático para já vir preenchido.' }[filtroModelo]}</p>
-        <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-x="novo">${ICON.plus}Criar modelo</button>${filtroModelo === 'atestado' ? `<button class="btn btn-ghost" data-x="basicos">Criar os 3 modelos básicos</button>` : ''}</div></div>`;
+        <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-x="novo">${ICON.plus}Criar modelo</button><button class="btn btn-ghost" data-x="basicos">Restaurar sugestões</button></div></div>`;
     } else if (filtroModelo === 'texto') {
       const grupos = {}; lst.forEach(m => { const k = (m.conteudo || {}).campo || 'outros'; (grupos[k] = grupos[k] || []).push(m); });
       corpo = CAMPOS.filter(([k]) => grupos[k]).map(([k, t]) => `<h2 class="rule">${esc(t)}</h2><ul class="list">${grupos[k].map(linhaModelo).join('')}</ul>`).join('');
     } else corpo = `<ul class="list">${lst.map(linhaModelo).join('')}</ul>`;
     main.innerHTML = `
-      <div class="page-head"><div><h1>Modelos</h1><p class="muted small">Tudo o que você escreve sempre igual, pronto para aplicar e editar na consulta.</p></div><button class="btn btn-primary" data-x="novo">${ICON.plus}Novo modelo</button></div>
+      <div class="page-head"><div><h1>Modelos</h1><p class="muted small">Tudo o que você escreve sempre igual, pronto para aplicar e editar na consulta. Os itens “Sugerido” são pontos de partida: abra, ajuste e salve para virar o seu padrão.</p></div><div class="actions"><button class="btn btn-ghost" data-x="basicos">Restaurar sugestões</button><button class="btn btn-primary" data-x="novo">${ICON.plus}Novo modelo</button></div></div>
       <div class="filter-chips" role="group" aria-label="Tipo de modelo" style="margin-bottom:16px">${TIPOS_MODELO.map(([k, t]) => `<button type="button" data-tm="${k}" aria-pressed="${k === filtroModelo}">${t} <span class="muted">(${modelosDo(k).length})</span></button>`).join('')}</div>
       ${corpo}`;
     $$('[data-tm]', main).forEach(b => b.addEventListener('click', () => { filtroModelo = b.dataset.tm; viewModelos(main); }));
     $$('[data-x="novo"]', main).forEach(b => b.addEventListener('click', () => dialogoModelo({ tipo: filtroModelo }, () => viewModelos(main))));
     $$('[data-mid]', main).forEach(b => b.addEventListener('click', () => dialogoModelo(S.modelos.find(m => m.id === b.dataset.mid), () => viewModelos(main))));
-    const bb = main.querySelector('[data-x="basicos"]');
-    if (bb) bb.addEventListener('click', () => ocupado(bb, async () => { try { await DB.modelos.saveMany(window.MODELOS_BASE.map(m => ({ ...m }))); toast('Modelos básicos de atestado criados.'); viewModelos(main); } catch (err) { falha(err); } }));
+    $$('[data-x="basicos"]', main).forEach(bb => bb.addEventListener('click', () => ocupado(bb, async () => { try { const n = await restaurarSugestoes(); toast(n ? `${n} ${n === 1 ? 'sugestão adicionada' : 'sugestões adicionadas'}.` : 'Todas as sugestões já estão na sua lista.'); viewModelos(main); } catch (err) { falha(err); } })));
   }
   function linhaModelo(m) {
-    return `<li><button type="button" class="row" data-mid="${esc(m.id)}"><span class="avatar" aria-hidden="true">${(m.tipo === 'texto' ? ICON.text : ICON.layers).replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(m.nome)} ${(m.conteudo || {}).auto ? '<span class="chip copper">Automático</span>' : ''}</span><span class="small muted wrap-any">${esc(resumoModelo(m))}</span></span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`;
+    return `<li><button type="button" class="row" data-mid="${esc(m.id)}"><span class="avatar" aria-hidden="true">${(m.tipo === 'texto' ? ICON.text : ICON.layers).replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(m.nome)} ${(m.conteudo || {}).sugerido ? '<span class="chip">Sugerido</span>' : ''} ${(m.conteudo || {}).auto ? '<span class="chip copper">Automático</span>' : ''}</span><span class="small muted wrap-any">${esc(resumoModelo(m))}</span></span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`;
   }
 
   function dialogoModelo(orig, depois) {
@@ -1160,7 +1215,7 @@
             const vazio = M.tipo === 'prescricao' ? !c.itens.length && !c.orientacoes.trim() : M.tipo === 'exames' ? !c.exames.length : !String(c.texto).trim();
             if (vazio) { toast('O modelo está vazio — preencha o conteúdo antes de salvar.', true); if (M.tipo === 'prescricao' && !c.itens.length) { c.itens.push(copiaItem({})); drawRx(); } if (M.tipo === 'exames' && !c.exames.length) { c.exames.push({ nome: '' }); drawEx(); } return; }
             await ocupado(b, async () => {
-              try { await salvarModelo({ ...(novo ? {} : { id: orig.id }), tipo: M.tipo, nome: M.nome, conteudo: c }); toast(novo ? 'Modelo criado.' : 'Modelo atualizado.'); fechar(); depois && depois(); } catch (err) { falha(err); }
+              try { await salvarModelo({ ...(novo ? {} : { id: orig.id }), tipo: M.tipo, nome: M.nome, conteudo: { ...c, sugerido: false } }); toast(novo ? 'Modelo criado.' : 'Modelo salvo como seu padrão.'); fechar(); depois && depois(); } catch (err) { falha(err); }
             });
           }
         });
@@ -1299,10 +1354,22 @@
   /* =====================================================================
      Inicialização
      ===================================================================== */
+  async function iniciarModelos() {
+    if (S.perfil.modelos_iniciados) return;
+    if (!S.modelos.length) { await DB.modelos.saveMany(window.MODELOS_BASE.map(m => JSON.parse(JSON.stringify(m)))); S.modelos = await DB.modelos.list(); }
+    try { S.perfil = await DB.perfil.save({ ...S.perfil, modelos_iniciados: true }); } catch (e) { console.warn(e); }
+  }
+  async function restaurarSugestoes() {
+    const tem = new Set(S.modelos.map(m => m.tipo + '|' + norm(m.nome)));
+    const faltam = window.MODELOS_BASE.filter(m => !tem.has(m.tipo + '|' + norm(m.nome))).map(m => JSON.parse(JSON.stringify(m)));
+    if (faltam.length) await DB.modelos.saveMany(faltam);
+    S.modelos = await DB.modelos.list();
+    return faltam.length;
+  }
   async function iniciarSessao() {
     S.user = await DB.auth.session();
     if (!S.user) return telaAuth();
-    try { await carregarBase(); } catch (e) { falha(e); }
+    try { await carregarBase(); await iniciarModelos(); } catch (e) { falha(e); }
     moldura();
     await rotear();
   }
