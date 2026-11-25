@@ -7,6 +7,6 @@
    navegador, sem login real) — não use dados reais de pacientes nesse modo.
    ===================================================================== */
 window.APP_CONFIG = {
-  SUPABASE_URL: '',
-  SUPABASE_KEY: ''
+  SUPABASE_URL: 'https://juftswxsdmffxznsdoyu.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_ERbyfNBdGE71ebpiwUXK5A_N1BCpzUp'
 };

@@ -183,6 +183,8 @@ begin
   return new;
 end $$;
 
+revoke execute on function public.tg_novo_usuario() from public, anon, authenticated;
+
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.tg_novo_usuario();
