@@ -73,6 +73,59 @@ Depois aponte um domínio próprio, se quiser.
    (ex.: `Dra. Ana Paula Vianna <consultorio@seudominio.com.br>`).
 A função `enviar-documentos` (pasta `supabase/functions`) já está publicada no projeto.
 
+## Folhetos de orientação por protocolo
+Em **Modelos → Folhetos de orientação** ficam os folhetos prontos (inseminação, coito programado,
+punção, transferência e aplicação de injetável) — **conteúdo sugerido, para revisar e ajustar**.
+Na consulta ou na ficha da paciente: **Novo documento → Orientações / folheto → Usar folheto padrão**,
+informe a data e hora do procedimento e as datas do folheto são calculadas sozinhas.
+
+Marcação do texto (uma instrução por linha):
+
+| Linha | Vira no PDF |
+|---|---|
+| `# Título` | título de seção |
+| `+ texto` | o que pode / deve fazer (ícone verde) |
+| `x texto` | o que evitar (ícone vinho) |
+| `1. texto` | passo numerado |
+| `- texto` | tópico simples |
+| `> texto` | caixa de destaque |
+| `@ quando \| o quê` | linha do tempo |
+| `{D+3}` `{D-2}` | dia relativo à data de referência (ex.: “sex., 28/11”) |
+| `{H-36}` `{H+0}` | dia e hora relativos (ex.: “qui., 26/11, 21h00”) |
+| `{data_ref}` `{hora_ref}` | a própria data e hora de referência |
+
+## Orçamentos
+**Novo documento → Orçamento → Usar orçamento padrão**: itens agrupados (honorários médicos,
+procedimentos, laboratório, medicações estimadas), desconto, formas de pagamento, o que inclui e o que
+não inclui, validade e campo de ciência da paciente. Os modelos sugeridos vêm sem valores: preencha uma
+vez e salve como o seu padrão. (A emissão da nota fiscal da PJ fica para uma etapa futura.)
+
+## Assinatura digital (receita, atestado e exames enviados sem imprimir)
+Ao marcar **Assinar digitalmente** no documento, o PDF sai no modelo eletrônico e é assinado com o
+certificado ICP-Brasil em nuvem da médica:
+- data e hora de emissão, nome e CPF da paciente (obrigatório), CRM/UF e RQE;
+- metadados exigidos pelo ITI para documentos de saúde (OID do tipo de documento, do CRM e da UF);
+- assinatura PDF com CMS destacado (SHA-256) e DocMDP, como pede o Guia do Desenvolvedor do VALIDAR;
+- **QR Code + código de acesso**: a farmácia lê o QR pelo site validar.iti.gov.br, digita o código e
+  confere a receita; ou envia o PDF ao validador.
+
+Sem marcar, continua saindo o receituário próprio, para imprimir e assinar à mão.
+Medicamentos de controle especial seguem na plataforma do CFM (integração obrigatória ao SNCR/Anvisa).
+
+**Configuração (uma vez):**
+1. Rodar `supabase/migracao_v4.sql` no SQL Editor (ou o `schema.sql` inteiro — é idempotente).
+2. Publicar as funções `assinar-documento` (com verificação de JWT) e `receita`
+   (**sem** verificação de JWT — é o endereço público do QR Code).
+3. Pedir à Valid o acesso à API de integração do VIDaaS (formulário “Solicitar Acesso para API de
+   Integração” em validcertificadora.com.br/pages/vidaas-health, pede CNPJ) e cadastrar os segredos
+   `VIDAAS_CLIENT_ID` e `VIDAAS_CLIENT_SECRET` em **Edge Functions → Secrets**.
+4. No app: **Perfil → Assinatura digital** → certificado VIDaaS + CPF → **Autorizar agora**
+   (aprovação no app VIDaaS do celular; vale pelo período escolhido, de 1 hora a 7 dias).
+
+Para testar o fluxo antes das credenciais da Valid, dá para cadastrar um certificado de teste
+(`ASSINATURA_TESTE_CHAVE` em PKCS#8 PEM e `ASSINATURA_TESTE_CERT` em PEM) — o PDF sai com a marca
+“TESTE — SEM VALIDADE”.
+
 ## Pacientes
 Busca por nome, CPF, telefone, e-mail ou convênio; ordenação por nome (A–Z/Z–A), última consulta,
 clínica (agrupado), idade ou cadastro; filtros por clínica, período da última consulta e convênio.
@@ -84,7 +137,8 @@ clínica (agrupado), idade ou cadastro; filtros por clínica, período da últim
 - **Controle especial** (Portaria 344/98, ex.: antidepressivos): ficam **fora** deste PDF — desde a
   RDC 1.000/2025 a Receita de Controle Especial segue o modelo oficial da Anvisa.
 - Também gera **Solicitação de exames** e **Registro da consulta** (cópia do prontuário).
-- O PDF é para imprimir e assinar à mão, ou assinar digitalmente com certificado ICP-Brasil.
+- O PDF é para imprimir e assinar à mão, ou sai **assinado digitalmente** (veja acima).
+- **Orientações** (folhetos com datas calculadas) e **Orçamento** também saem com a mesma identidade visual.
 
 ## Guarda do prontuário
 O prontuário deve ser guardado por no mínimo 20 anos (Lei 13.787/2018). No plano gratuito
@@ -93,12 +147,14 @@ periodicamente, ou assine o plano Pro (backup diário).
 
 ## Estrutura
 - `index.html`, `styles.css`, `app.js` — interface
-- `pdf.js` — geração dos documentos em PDF (receituário, exames, atestado, registro)
+- `pdf.js` — geração dos documentos em PDF (receituário, exames, atestado, folhetos, orçamento, registro)
 - `data.js` — acesso ao banco (Supabase) ou modo demonstração
 - `config.js` — URL e chave pública do Supabase
 - `modelos-base.js` — modelos básicos de atestado
 - `assets.js` — fontes e logomarca embutidas para o PDF (gerado a partir de `assets/`)
-- `supabase/schema.sql` — tabelas e regras de segurança do banco
+- `supabase/schema.sql` — tabelas e regras de segurança do banco (`migracao_v4.sql`: só as novidades)
+- `supabase/functions/` — `enviar-documentos` (e-mail), `assinar-documento` (assinatura ICP-Brasil), `receita` (QR Code), `_shared/pdf-assinatura.ts`
+- `vendor/qrcode.js` — gerador de QR Code (MIT, Kazuhiko Arase)
 
 ## Créditos
 Fontes Cormorant Garamond e Jost (SIL Open Font License). Bibliotecas jsPDF e supabase-js (licença MIT).

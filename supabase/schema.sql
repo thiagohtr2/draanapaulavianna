@@ -246,7 +246,7 @@ revoke all on all tables in schema public from anon;
 create table if not exists public.modelos (
   id            uuid primary key default gen_random_uuid(),
   owner_id      uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  tipo          text not null check (tipo in ('prescricao','exames','atestado','texto')),
+  tipo          text not null check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento')),
   nome          text not null check (length(trim(nome)) > 0),
   conteudo      jsonb not null default '{}'::jsonb,
   criado_em     timestamptz not null default now(),
@@ -293,7 +293,7 @@ create table if not exists public.documentos (
   paciente_id      uuid not null references public.pacientes(id) on delete restrict,
   consulta_id      uuid references public.consultas(id) on delete set null,
   clinica_id       uuid references public.clinicas(id) on delete restrict,
-  tipo             text not null check (tipo in ('receita','exames','atestado','orientacoes','registro')),
+  tipo             text not null check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento')),
   titulo           text not null,
   nome_arquivo     text not null,
   emitido_em       timestamptz not null default now(),
@@ -380,3 +380,35 @@ drop policy if exists envios_criar on public.envios;
 create policy envios_criar on public.envios for insert to authenticated
   with check (owner_id = (select auth.uid()) and exists (select 1 from public.pacientes p where p.id = paciente_id and p.owner_id = (select auth.uid())));
 revoke all on public.envios from anon;
+
+-- =====================================================================
+--  v4 — folhetos de orientação, orçamentos e assinatura digital
+-- =====================================================================
+alter table public.modelos drop constraint if exists modelos_tipo_check;
+alter table public.modelos add constraint modelos_tipo_check
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento'));
+alter table public.documentos drop constraint if exists documentos_tipo_check;
+alter table public.documentos add constraint documentos_tipo_check
+  check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento'));
+
+alter table public.perfis add column if not exists assinatura_provedor text not null default '';
+alter table public.perfis add column if not exists assinatura_cpf      text not null default '';
+alter table public.perfis add column if not exists assinatura_duracao  integer not null default 43200;
+alter table public.perfis add column if not exists sugestoes_versao    integer not null default 1;
+
+-- Autorizações do certificado em nuvem (tokens). Só a função assinar-documento (service role) acessa.
+create table if not exists public.assinatura_sessoes (
+  id            uuid primary key default gen_random_uuid(),
+  owner_id      uuid not null references auth.users(id) on delete cascade,
+  provedor      text not null check (provedor in ('vidaas','teste')),
+  estado        text not null check (estado in ('pendente','ativa')),
+  code          text,
+  code_verifier text,
+  access_token  text,
+  duracao       integer,
+  expira_em     timestamptz not null,
+  criado_em     timestamptz not null default now()
+);
+create index if not exists assinatura_sessoes_owner_idx on public.assinatura_sessoes(owner_id, estado, expira_em desc);
+alter table public.assinatura_sessoes enable row level security;
+revoke all on public.assinatura_sessoes from anon, authenticated;

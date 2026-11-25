@@ -11,8 +11,13 @@
     wine: [94, 21, 48], wine2: [122, 31, 61], mauve: [156, 84, 104],
     rose: [217, 160, 172], blush: [251, 244, 245], blush2: [244, 230, 233],
     gold: [196, 135, 74], goldDark: [160, 98, 44], ink: [42, 27, 33],
-    gray: [104, 86, 93], hair: [230, 211, 216], white: [255, 255, 255]
+    gray: [104, 86, 93], hair: [230, 211, 216], white: [255, 255, 255],
+    sage: [62, 116, 94], sageBg: [229, 241, 235], roseBg: [250, 233, 237]
   };
+  const pad2 = n => String(n).padStart(2, '0');
+  const horaCurta = d => `${pad2(d.getHours())}h${pad2(d.getMinutes())}`;
+  // valores em reais (sem espaço não separável, para não depender do glifo)
+  function brl(v) { return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/ /g, ' '); }
 
   const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   const VIA_ORDEM = ['Oral','Sublingual','Vaginal','Tópico','Transdérmico','Intramuscular','Subcutâneo','Endovenoso','Nasal','Retal','Oftálmico','Inalatório','Outro'];
@@ -123,7 +128,8 @@
     }
     setF(doc, 'Jost', fs(g, 8.8), C.gray);
     const local = clean(ctx.clinica.cidade) ? `${clean(ctx.clinica.cidade)}, ` : '';
-    doc.text(local + dataExtenso(ctx.data), rx, secao.via ? ry + 1.4 : y, { align: 'right' });
+    // documento eletrônico: data e hora de emissão (Resolução CFM 2.299/2021)
+    doc.text(local + dataExtenso(ctx.data) + (ctx.digital ? `, ${horaCurta(ctx.data)}` : ''), rx, secao.via ? ry + 1.4 : y, { align: 'right' });
 
     y = Math.max(ty, y) + (g.k < 1 ? 5 : 6.5);
 
@@ -175,16 +181,19 @@
   function desenharRodape(ctx, secao, pagina, total) {
     const { doc, g } = ctx; const { W, H, M } = g; const m = ctx.medico;
     const A = window.ASSETS.img;
-    // assinatura
-    const sy = H - g.sigY;
-    doc.setDrawColor(...C.wine); doc.setLineWidth(0.3);
-    const sw = 72 * g.k;
-    doc.line(W / 2 - sw / 2, sy, W / 2 + sw / 2, sy);
-    setF(doc, 'CormSB', fs(g, 13), C.wine);
-    doc.text(m.nomeCompleto, W / 2, sy + 5.2 * g.k, { align: 'center' });
-    setF(doc, 'Jost', fs(g, 8), C.gray);
     const cred = [m.especialidade, m.crm ? `CRM-${m.crm_uf || ''} ${m.crm}` : '', m.rqe ? `RQE ${m.rqe}` : ''].filter(Boolean).join('  ·  ');
-    doc.text(cred, W / 2, sy + 9.4 * g.k, { align: 'center' });
+    if (ctx.digital) desenharSeloDigital(ctx, cred);
+    else {
+      // assinatura
+      const sy = H - g.sigY;
+      doc.setDrawColor(...C.wine); doc.setLineWidth(0.3);
+      const sw = 72 * g.k;
+      doc.line(W / 2 - sw / 2, sy, W / 2 + sw / 2, sy);
+      setF(doc, 'CormSB', fs(g, 13), C.wine);
+      doc.text(m.nomeCompleto, W / 2, sy + 5.2 * g.k, { align: 'center' });
+      setF(doc, 'Jost', fs(g, 8), C.gray);
+      doc.text(cred, W / 2, sy + 9.4 * g.k, { align: 'center' });
+    }
 
     // rodapé da clínica
     const fy = H - g.footH;
@@ -218,6 +227,59 @@
       doc.addImage(window.ASSETS.img['logo-symbol'], 'PNG', (W - w) / 2, (H - h) / 2 + 14 * g.k, w, h, 'symbolWm', 'SLOW');
       doc.restoreGraphicsState();
     } catch (e) { /* sem suporte a transparência: segue sem marca d'água */ }
+  }
+
+  /* ---------- documento eletrônico: QR Code, selo da assinatura, marca de teste ---------- */
+  function desenharQR(doc, texto, x, y, tam) {
+    if (!window.qrcode) return;
+    const qr = window.qrcode(0, 'M'); qr.addData(texto); qr.make();
+    const n = qr.getModuleCount(); const cel = tam / (n + 2);
+    doc.setFillColor(...C.white); doc.rect(x, y, tam, tam, 'F');
+    doc.setFillColor(...C.ink);
+    for (let r = 0; r < n; r++) {
+      let c = 0;
+      while (c < n) { // agrupa módulos escuros vizinhos numa só faixa (menos objetos, sem frestas)
+        if (!qr.isDark(r, c)) { c++; continue; }
+        let f = c; while (f + 1 < n && qr.isDark(r, f + 1)) f++;
+        doc.rect(x + (c + 1) * cel, y + (r + 1) * cel, (f - c + 1) * cel + 0.02, cel + 0.02, 'F');
+        c = f + 1;
+      }
+    }
+  }
+  function desenharSeloDigital(ctx, cred) {
+    const { doc, g } = ctx; const { W, H, M } = g; const k = g.k; const dg = ctx.digital;
+    const top = H - g.sigY - 7 * k, bot = H - g.footH - 3, h = bot - top, w = W - 2 * M;
+    doc.setFillColor(...C.blush); doc.setDrawColor(...C.rose); doc.setLineWidth(0.25);
+    doc.roundedRect(M, top, w, h, 2.2, 2.2, 'FD');
+    doc.setFillColor(...C.wine); doc.roundedRect(M, top, 1.3, h, 0.65, 0.65, 'F');
+    const q = h - 5; const qx = W - M - q - 2.5, qy = top + 2.5;
+    if (dg.url) desenharQR(doc, dg.url, qx, qy, q);
+    const x = M + 6; const maxW = (dg.url ? qx - 4 : W - M - 4) - x;
+    setF(doc, 'JostM', fs(g, 6.8), dg.teste || dg.previa ? [155, 28, 49] : C.goldDark);
+    tracked(doc, dg.teste ? 'ASSINATURA DE TESTE — SEM VALIDADE JURÍDICA' : dg.previa ? 'PRÉ-VISUALIZAÇÃO — AINDA NÃO ASSINADO' : 'ASSINADO DIGITALMENTE · CERTIFICADO ICP-BRASIL', x, top + 5.8 * k, 0.6 * k);
+    setF(doc, 'CormSB', fs(g, 13), C.wine); doc.text(ctx.medico.nomeCompleto, x, top + 11.6 * k);
+    setF(doc, 'Jost', fs(g, 7.8), C.gray); doc.text(doc.splitTextToSize(cred, maxW)[0] || '', x, top + 15.6 * k);
+    const d = ctx.data;
+    const quando = `Emitido em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} às ${horaCurta(d)}`;
+    const ly = top + 20 * k; let cx = x;
+    setF(doc, 'Jost', fs(g, 7.8), C.ink); doc.text(quando, cx, ly); cx += doc.getTextWidth(quando);
+    if (dg.codigo) {
+      const sep = '  ·  Código de acesso: ';
+      doc.text(sep, cx, ly); cx += doc.getTextWidth(sep);
+      setF(doc, 'JostM', fs(g, 8.4), C.wine); tracked(doc, dg.codigo, cx, ly, 0.5 * k);
+    }
+    setF(doc, 'Jost', fs(g, 7.2), C.gray);
+    doc.text(doc.splitTextToSize(dg.url ? 'Farmácia: valide em validar.iti.gov.br — leia o QR Code ou envie este PDF.' : 'Valide a assinatura em validar.iti.gov.br enviando este PDF.', maxW)[0], x, top + 24.2 * k);
+  }
+  function marcaTeste(ctx) {
+    if (!ctx.digital || !ctx.digital.teste) return;
+    const { doc, g } = ctx; const { W, H } = g;
+    try {
+      doc.saveGraphicsState(); doc.setGState(new doc.GState({ opacity: 0.16 }));
+      setF(doc, 'JostM', fs(g, 40), [155, 28, 49]);
+      doc.text('TESTE — SEM VALIDADE', W / 2, H / 2 + 20 * g.k, { align: 'center', angle: 32 });
+      doc.restoreGraphicsState();
+    } catch (e) { /* segue sem a marca */ }
   }
 
   /* ---------- blocos de conteúdo ---------- */
@@ -287,7 +349,7 @@
   }
 
   function blocoTitulo(label) { return blocoGrupo(label); }
-  function blocoEspaco(mm) { return { medir: (ctx) => mm * ctx.g.k, desenhar() {} }; }
+  function blocoEspaco(mm) { return { espaco: true, medir: (ctx) => mm * ctx.g.k, desenhar() {} }; }
 
   // texto corrido, quebrável por linha; linhas iniciadas por "-" ou "•" viram tópicos
   function blocoTexto(texto, opts = {}) {
@@ -388,6 +450,173 @@
     };
   }
 
+  /* ---------- folhetos de orientação: blocos visuais ---------- */
+  // Ícone redondo: "pode" (visto, verde-sálvia) ou "evite" (x, vinho)
+  function icone(doc, tipo, cx, cy, r) {
+    const pode = tipo === 'pode';
+    doc.setFillColor(...(pode ? C.sageBg : C.roseBg)); doc.circle(cx, cy, r, 'F');
+    doc.setDrawColor(...(pode ? C.sage : C.wine2)); doc.setLineWidth(r * 0.24); doc.setLineCap && doc.setLineCap('round');
+    if (pode) { doc.line(cx - r * 0.45, cy + r * 0.02, cx - r * 0.1, cy + r * 0.36); doc.line(cx - r * 0.1, cy + r * 0.36, cx + r * 0.5, cy - r * 0.36); }
+    else { const a = r * 0.36; doc.line(cx - a, cy - a, cx + a, cy + a); doc.line(cx - a, cy + a, cx + a, cy - a); }
+    doc.setLineCap && doc.setLineCap('butt');
+  }
+  function blocoMarcador(tipo, texto) {
+    let L = null;
+    const lay = (ctx, w) => { const { doc, g } = ctx; setF(doc, 'Jost', fs(g, 10), C.ink); const ls = doc.splitTextToSize(texto, w - 9 * g.k); return { ls, h: ls.length * 4.7 * g.k + 2.6 * g.k }; };
+    return {
+      medir(ctx, w) { L = lay(ctx, w); return L.h; },
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx; L = L || lay(ctx, w);
+        icone(doc, tipo, x + 2.4 * g.k, y + 2.7 * g.k, 2.2 * g.k);
+        setF(doc, 'Jost', fs(g, 10), C.ink);
+        L.ls.forEach((t, i) => doc.text(t, x + 7.6 * g.k, y + 3.9 * g.k + i * 4.7 * g.k));
+      }
+    };
+  }
+  function blocoPasso(n, texto) {
+    let L = null;
+    const lay = (ctx, w) => { const { doc, g } = ctx; setF(doc, 'Jost', fs(g, 10), C.ink); const ls = doc.splitTextToSize(texto, w - 10 * g.k); return { ls, h: Math.max(ls.length * 4.7 * g.k, 5.4 * g.k) + 2.8 * g.k }; };
+    return {
+      medir(ctx, w) { L = lay(ctx, w); return L.h; },
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx; L = L || lay(ctx, w);
+        doc.setFillColor(...C.wine); doc.circle(x + 2.7 * g.k, y + 2.7 * g.k, 2.7 * g.k, 'F');
+        setF(doc, 'JostM', fs(g, 8.2), C.white); doc.text(String(n), x + 2.7 * g.k, y + 3.75 * g.k, { align: 'center' });
+        setF(doc, 'Jost', fs(g, 10), C.ink);
+        L.ls.forEach((t, i) => doc.text(t, x + 8.6 * g.k, y + 3.9 * g.k + i * 4.7 * g.k));
+      }
+    };
+  }
+  function blocoDestaque(texto) {
+    let L = null;
+    const lay = (ctx, w) => { const { doc, g } = ctx; setF(doc, 'JostM', fs(g, 9.8), C.wine); const ls = doc.splitTextToSize(texto, w - 12 * g.k); return { ls, h: ls.length * 4.6 * g.k + 7.4 * g.k }; };
+    return {
+      medir(ctx, w) { L = lay(ctx, w); return L.h + 2 * ctx.g.k; },
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx; L = L || lay(ctx, w);
+        doc.setFillColor(...C.blush2); doc.roundedRect(x, y + 0.6, w, L.h, 2, 2, 'F');
+        doc.setFillColor(...C.gold); doc.roundedRect(x, y + 0.6, 1.3, L.h, 0.65, 0.65, 'F');
+        setF(doc, 'JostM', fs(g, 9.8), C.wine);
+        L.ls.forEach((t, i) => doc.text(t, x + 6 * g.k, y + 0.6 + 5 * g.k + i * 4.6 * g.k));
+      }
+    };
+  }
+  // Linha do tempo: "@ quando | o que fazer"
+  function blocoTempo(quando, texto, primeiro, ultimo) {
+    let L = null;
+    const col = ctx => 37 * ctx.g.k;
+    const lay = (ctx, w) => {
+      const { doc, g } = ctx;
+      setF(doc, 'JostM', fs(g, 9), C.wine2); const lq = doc.splitTextToSize(quando, col(ctx) - 4);
+      setF(doc, 'Jost', fs(g, 10), C.ink); const lt = doc.splitTextToSize(texto, w - col(ctx) - 7 * g.k);
+      return { lq, lt, h: Math.max(lq.length * 4.2, lt.length * 4.7) * g.k + 4.4 * g.k };
+    };
+    return {
+      medir(ctx, w) { L = lay(ctx, w); return L.h; },
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx; L = L || lay(ctx, w);
+        const lx = x + col(ctx) + 1.6 * g.k, dy = y + 2.7 * g.k;
+        doc.setDrawColor(...C.rose); doc.setLineWidth(0.35);
+        doc.line(lx, primeiro ? dy : y, lx, ultimo ? dy : y + L.h);
+        doc.setFillColor(...C.white); doc.setDrawColor(...C.gold); doc.setLineWidth(0.6); doc.circle(lx, dy, 1.35 * g.k, 'FD');
+        setF(doc, 'JostM', fs(g, 9), C.wine2); L.lq.forEach((t, i) => doc.text(t, x, y + 3.8 * g.k + i * 4.2 * g.k));
+        setF(doc, 'Jost', fs(g, 10), C.ink); L.lt.forEach((t, i) => doc.text(t, lx + 5 * g.k, y + 3.9 * g.k + i * 4.7 * g.k));
+      }
+    };
+  }
+  /**
+   * Marcação dos folhetos (uma instrução por linha):
+   *   # Título de seção     + pode / faça       x evite / não faça
+   *   1. passo numerado     - tópico            > destaque (caixa)
+   *   @ quando | o que fazer  (linha do tempo)  linha em branco = espaço
+   */
+  function blocosFolheto(texto) {
+    const linhas = clean(texto).split('\n');
+    const blocos = []; let par = []; let passo = 0; let tempo = [];
+    const fecharPar = () => { if (par.length) { blocos.push(blocoTexto(par.join('\n'))); par = []; } };
+    const fecharTempo = () => { tempo.forEach((t, i) => blocos.push(blocoTempo(t[0], t[1], i === 0, i === tempo.length - 1))); tempo = []; };
+    linhas.forEach(raw => {
+      const l = raw.trim(); let m;
+      if (!/^@/.test(l)) fecharTempo();
+      if (!/^\d+[.)]\s/.test(l)) passo = 0;
+      if (!l) { fecharPar(); blocos.push(blocoEspaco(2.4)); return; }
+      if ((m = l.match(/^#\s*(.+)$/))) { fecharPar(); blocos.push(blocoEspaco(1.5)); blocos.push(blocoGrupo(m[1])); return; }
+      if ((m = l.match(/^\+\s*(.+)$/))) { fecharPar(); blocos.push(blocoMarcador('pode', m[1])); return; }
+      if ((m = l.match(/^[xX×]\s+(.+)$/))) { fecharPar(); blocos.push(blocoMarcador('evite', m[1])); return; }
+      if ((m = l.match(/^>\s*(.+)$/))) { fecharPar(); blocos.push(blocoDestaque(m[1])); return; }
+      if ((m = l.match(/^@\s*([^|]+)\|\s*(.+)$/))) { fecharPar(); tempo.push([m[1].trim(), m[2].trim()]); return; }
+      if ((m = l.match(/^\d+[.)]\s+(.+)$/))) { fecharPar(); blocos.push(blocoPasso(++passo, m[1])); return; }
+      par.push(raw);
+    });
+    fecharPar(); fecharTempo();
+    while (blocos.length && blocos[blocos.length - 1].espaco) blocos.pop();
+    while (blocos.length && blocos[0].espaco) blocos.shift();
+    // títulos não ficam sozinhos no fim da página
+    blocos.forEach((b, i) => { if (b.keepNext && blocos[i + 1] && blocos[i + 1].quebravel) b.keepNext = false; });
+    return blocos;
+  }
+
+  /* ---------- orçamento ---------- */
+  function blocoLinhaValor(it) {
+    let L = null;
+    const lay = (ctx, w) => {
+      const { doc, g } = ctx;
+      setF(doc, 'Jost', fs(g, 10.2), C.ink); const vt = it.incluso ? 'Incluso' : brl(it.valor); const vw = doc.getTextWidth(vt);
+      setF(doc, 'JostM', fs(g, 10.2), C.ink); const ld = doc.splitTextToSize(clean(it.descricao) || '—', w - vw - 14);
+      setF(doc, 'Jost', fs(g, 8.8), C.gray); const ldt = clean(it.detalhe) ? doc.splitTextToSize(clean(it.detalhe), w - vw - 14) : [];
+      return { vt, vw, ld, ldt, h: ld.length * 4.7 * g.k + ldt.length * 4 * g.k + 4.6 * g.k };
+    };
+    return {
+      medir(ctx, w) { L = lay(ctx, w); return L.h; },
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx; L = L || lay(ctx, w);
+        const base = y + 4 * g.k;
+        setF(doc, 'JostM', fs(g, 10.2), C.ink); L.ld.forEach((t, i) => doc.text(t, x, base + i * 4.7 * g.k));
+        const lastW = doc.getTextWidth(L.ld[0]);
+        setF(doc, it.incluso ? 'JostM' : 'Jost', fs(g, 10.2), it.incluso ? C.sage : C.ink); doc.text(L.vt, x + w, base, { align: 'right' });
+        const x1 = x + lastW + 2.5, x2 = x + w - L.vw - 2.5;
+        if (x2 - x1 > 4) { doc.setDrawColor(...C.rose); doc.setLineWidth(0.28); doc.setLineDashPattern([0.35, 1.25], 0); doc.line(x1, base - 0.6, x2, base - 0.6); doc.setLineDashPattern([], 0); }
+        if (L.ldt.length) { setF(doc, 'Jost', fs(g, 8.8), C.gray); L.ldt.forEach((t, i) => doc.text(t, x, base + L.ld.length * 4.7 * g.k - 0.6 + i * 4 * g.k)); }
+        doc.setDrawColor(...C.hair); doc.setLineWidth(0.15); doc.line(x, y + L.h - 0.6, x + w, y + L.h - 0.6);
+      }
+    };
+  }
+  function blocoSubtotal(rotulo, valor, destaque) {
+    return {
+      medir: ctx => (destaque ? 15 : 7.4) * ctx.g.k,
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx;
+        if (destaque) {
+          const h = 11.5 * g.k;
+          doc.setFillColor(...C.wine); doc.roundedRect(x, y + 2.2, w, h, 2.4, 2.4, 'F');
+          setF(doc, 'JostM', fs(g, 8), C.rose); tracked(doc, rotulo.toUpperCase(), x + 6, y + 2.2 + h / 2 + 1.1, 1 * g.k);
+          setF(doc, 'CormSB', fs(g, 17), C.white); doc.text(brl(valor), x + w - 6, y + 2.2 + h / 2 + 2, { align: 'right' });
+        } else {
+          setF(doc, 'Jost', fs(g, 9.4), C.gray); doc.text(rotulo, x + w - 40 * g.k, y + 4.8 * g.k, { align: 'right' });
+          setF(doc, 'JostM', fs(g, 10), valor < 0 ? C.sage : C.ink); doc.text((valor < 0 ? '− ' : '') + brl(Math.abs(valor)), x + w, y + 4.8 * g.k, { align: 'right' });
+        }
+      }
+    };
+  }
+  function blocoCiencia(nomePaciente) {
+    return {
+      medir: ctx => 27 * ctx.g.k,
+      desenhar(ctx, x, y, w) {
+        const { doc, g } = ctx;
+        doc.setDrawColor(...C.rose); doc.setLineWidth(0.25); doc.setLineDashPattern([1, 0.8], 0);
+        doc.roundedRect(x, y + 2, w, 23 * g.k, 1.8, 1.8, 'S'); doc.setLineDashPattern([], 0);
+        setF(doc, 'JostM', fs(g, 6.8), C.mauve); tracked(doc, 'CIÊNCIA DA PACIENTE', x + 5, y + 7 * g.k, 0.8 * g.k);
+        setF(doc, 'Jost', fs(g, 8.8), C.gray); doc.text('Declaro que recebi este orçamento, li as condições e esclareci minhas dúvidas.', x + 5, y + 11.6 * g.k);
+        const ly = y + 21 * g.k;
+        doc.setDrawColor(...C.gray); doc.setLineWidth(0.2);
+        doc.line(x + 5, ly, x + w * 0.62, ly); doc.line(x + w * 0.68, ly, x + w - 5, ly);
+        setF(doc, 'Jost', fs(g, 7.4), C.gray);
+        doc.text(nomePaciente ? `Assinatura — ${nomePaciente}` : 'Assinatura da paciente', x + 5, ly + 3.4 * g.k);
+        doc.text('Data', x + w * 0.68, ly + 3.4 * g.k);
+      }
+    };
+  }
+
   /* ---------- paginação de uma seção (um documento lógico) ---------- */
   function paginarSecao(ctx, secao) {
     const { g } = ctx; const { W, H, M } = g;
@@ -414,7 +643,7 @@
       }
       let h = bl.medir(ctx, w);
       let need = h;
-      if (bl.keepNext && blocos[b + 1] && !blocos[b + 1].quebravel) need += blocos[b + 1].medir(ctx, w);
+      if (bl.keepNext && blocos[b + 1]) need += blocos[b + 1].quebravel ? blocos[b + 1].alturaLinha(ctx) * 2 + 2.5 : blocos[b + 1].medir(ctx, w);
       if (y + need > limite && pg.itens.length) { novaPagina(); y = yIni; }
       pg.itens.push([bl, y]); y += h;
     }
@@ -435,6 +664,7 @@
         if (!primeira) doc.addPage();
         primeira = false;
         marcaDagua(ctx);
+        marcaTeste(ctx);
         desenharCabecalho(ctx, secao);
         pg.itens.forEach(([bl, y, de, ate]) => {
           if (bl.quebravel) bl.desenharLinhas(ctx, M, y, w, de, ate);
@@ -477,7 +707,7 @@
    *           exames:[{nome}], indicacao, registro:[{rotulo, valor}], tamanho:'A4'|'A5', marcaDagua:bool }
    * retorna { blob, nomeArquivo, avisos:[], paginas }
    */
-  const ROTULOS = { receita: 'Receita', orientacoes: 'Orientacoes', exames: 'Solicitacao de exames', registro: 'Registro da consulta', atestado: 'Atestado' };
+  const ROTULOS = { receita: 'Receita', orientacoes: 'Orientacoes', exames: 'Solicitacao de exames', registro: 'Registro da consulta', atestado: 'Atestado', orcamento: 'Orcamento' };
   // Primeiro_Ultimo_Documento_dd-mm-aaaa.pdf (sem acentos nem espaços)
   function nomeDoArquivo(nome, rotulo, data) {
     const ascii = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ]+/g, ' ').trim();
@@ -495,7 +725,7 @@
     const m = dados.medico || {};
     const medico = Object.assign({}, m, { nomeCompleto: [clean(m.tratamento), clean(m.nome)].filter(Boolean).join(' ') || 'Dra. Ana Paula Vianna', especialidade: clean(m.especialidade) || 'Ginecologia e Fertilidade' });
     const { doc, g } = criarDocumento({ tamanho: dados.tamanho, medico, tituloArquivo: dados.titulo });
-    const ctx = { doc, g, medico, clinica: dados.clinica || {}, paciente: dados.paciente || {}, data, marcaDagua: dados.marcaDagua !== false, yCorpo: null };
+    const ctx = { doc, g, medico, clinica: dados.clinica || {}, paciente: dados.paciente || {}, data, marcaDagua: dados.marcaDagua !== false, yCorpo: null, digital: dados.digital || null };
     const secoes = [];
     const tipo = dados.tipo || 'receita';
 
@@ -511,7 +741,13 @@
         if (orient) { blocos.push(blocoTitulo('Orientações')); blocos.push(blocoTexto(orient)); }
         secoes.push({ titulo: simples.length ? 'Receituário' : 'Orientações médicas', blocos });
       }
-      if (anti.length) {
+      if (anti.length && ctx.digital) {
+        // receita eletrônica: um único documento; a farmácia registra a dispensação no próprio sistema
+        const blocos = blocosPrescricao(anti);
+        blocos.push(blocoAviso('Receita de antimicrobiano válida por 10 dias a partir da data de emissão (RDC Anvisa nº 471/2021). Documento eletrônico assinado digitalmente: a dispensação é registrada pela farmácia após a validação da assinatura.'));
+        secoes.push({ titulo: 'Receituário', subtitulo: 'Antimicrobiano', exigeSexo: true, blocos });
+        if (orient && !simples.length) secoes.push({ titulo: 'Orientações médicas', blocos: [blocoTexto(orient)] });
+      } else if (anti.length) {
         ['1ª via · retenção da farmácia', '2ª via · paciente'].forEach(via => {
           const blocos = blocosPrescricao(anti);
           blocos.push(blocoDispensacao());
@@ -523,7 +759,31 @@
       if (!secoes.length) throw new Error('Adicione ao menos um medicamento ou orientação para gerar o receituário.');
     } else if (tipo === 'orientacoes') {
       if (!clean(dados.orientacoes)) throw new Error('Escreva as orientações antes de gerar o PDF.');
-      secoes.push({ titulo: 'Orientações médicas', blocos: [blocoTexto(dados.orientacoes)] });
+      const pend = clean(dados.orientacoes).match(/\{[^}]+\}/g);
+      if (pend) avisos.push(`O texto ainda tem campos sem preencher: ${[...new Set(pend)].join(', ')}.`);
+      const sub = clean(dados.titulo) && !/^orienta[çc][õo]es( m[ée]dicas)?$/i.test(clean(dados.titulo)) ? clean(dados.titulo) : '';
+      secoes.push({ titulo: 'Orientações', subtitulo: sub, blocos: blocosFolheto(dados.orientacoes) });
+    } else if (tipo === 'orcamento') {
+      const itens = (dados.itens || []).filter(i => clean(i.descricao));
+      if (!itens.length) throw new Error('Adicione ao menos um item ao orçamento.');
+      const blocos = []; const grupos = [];
+      itens.forEach(i => { const gname = clean(i.grupo) || 'Itens'; let gr = grupos.find(x => x[0] === gname); if (!gr) grupos.push(gr = [gname, []]); gr[1].push(i); });
+      grupos.forEach(([gname, lst]) => { blocos.push(blocoGrupo(gname)); lst.forEach(i => blocos.push(blocoLinhaValor(i))); });
+      const soma = itens.reduce((a, i) => a + (i.incluso ? 0 : Number(i.valor) || 0), 0);
+      const desc = Math.max(0, Number(dados.desconto) || 0);
+      blocos.push(blocoEspaco(2));
+      if (desc) { blocos.push(blocoSubtotal('Subtotal', soma)); blocos.push(blocoSubtotal('Desconto', -desc)); }
+      blocos.push(blocoSubtotal('Total', Math.max(0, soma - desc), true));
+      if (clean(dados.pagamento)) { blocos.push(blocoTitulo('Formas de pagamento')); blocos.push(blocoTexto(dados.pagamento)); }
+      const inc = clean(dados.inclui).split('\n').map(t => t.replace(/^[-•+]\s*/, '').trim()).filter(Boolean);
+      const ninc = clean(dados.nao_inclui).split('\n').map(t => t.replace(/^[-•x]\s*/i, '').trim()).filter(Boolean);
+      if (inc.length) { blocos.push(blocoTitulo('Este orçamento inclui')); inc.forEach(t => blocos.push(blocoMarcador('pode', t))); }
+      if (ninc.length) { blocos.push(blocoTitulo('Não está incluído')); ninc.forEach(t => blocos.push(blocoMarcador('evite', t))); }
+      if (clean(dados.observacoes)) { blocos.push(blocoTitulo('Observações')); blocos.push(blocoTexto(dados.observacoes)); }
+      const dias = Math.max(0, parseInt(dados.validade_dias, 10) || 0);
+      if (dias) { const v = new Date(data); v.setDate(v.getDate() + dias); blocos.push(blocoEspaco(2)); blocos.push(blocoAviso(`Orçamento válido até ${dataExtenso(v)} (${dias} dias). Valores sujeitos a alteração após essa data. As medicações são estimativas e podem variar conforme a resposta ao tratamento e a farmácia.`)); }
+      if (dados.ciencia) blocos.push(blocoCiencia(clean((dados.paciente || {}).nome)));
+      secoes.push({ titulo: 'Orçamento', subtitulo: clean(dados.titulo), blocos });
     } else if (tipo === 'exames') {
       const ex = (dados.exames || []).map(e => clean(e.nome || e)).filter(Boolean);
       if (!ex.length) throw new Error('Adicione ao menos um exame à solicitação.');
@@ -558,5 +818,26 @@
     return { blob: doc.output('blob'), nomeArquivo, avisos, paginas: doc.getNumberOfPages() };
   }
 
-  window.DocumentosPDF = { gerar, idade, dataExtenso, nomeDoArquivo };
+  /**
+   * Datas dos folhetos, calculadas a partir de uma data/hora de referência (ex.: a inseminação):
+   *   {D+3} / {D-2} → "sex., 28/11"        {H-36} / {H+0} → "seg., 24/11, 21h00"
+   *   {data_ref} → "quarta-feira, 26 de novembro de 2026"   {hora_ref} → "9h00"
+   */
+  const SEM = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.'];
+  const SEM_LONGO = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const TOKENS_DATA = /\{\s*(D|H)\s*([+-])\s*(\d{1,3})\s*\}|\{\s*(data_ref|hora_ref)\s*\}/gi;
+  const temDatas = t => { TOKENS_DATA.lastIndex = 0; const r = TOKENS_DATA.test(String(t || '')); TOKENS_DATA.lastIndex = 0; return r; };
+  function resolverDatas(texto, ref) {
+    const base = ref instanceof Date ? ref : (ref ? new Date(ref) : null);
+    if (!base || isNaN(base)) return String(texto || '');
+    const curta = d => `${SEM[d.getDay()]}, ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+    return String(texto || '').replace(TOKENS_DATA, (m, u, sinal, n, nome) => {
+      if (nome) return nome.toLowerCase() === 'data_ref' ? `${SEM_LONGO[base.getDay()]}, ${dataExtenso(base)}` : horaCurta(base);
+      const d = new Date(base); const q = (sinal === '-' ? -1 : 1) * Number(n);
+      if (u.toUpperCase() === 'D') { d.setDate(d.getDate() + q); return curta(d); }
+      d.setTime(d.getTime() + q * 3600000); return `${curta(d)}, ${horaCurta(d)}`;
+    });
+  }
+
+  window.DocumentosPDF = { gerar, idade, dataExtenso, nomeDoArquivo, brl, resolverDatas, temDatas };
 })();

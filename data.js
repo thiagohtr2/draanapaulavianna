@@ -103,7 +103,7 @@
 
     const documentos = {
       async list({ pacienteId, consultaId } = {}) {
-        let q = sb.from('documentos').select('id, paciente_id, consulta_id, clinica_id, tipo, titulo, nome_arquivo, emitido_em, resumo, arquivo_path, paginas, anulado_em, motivo_anulacao').order('emitido_em', { ascending: false });
+        let q = sb.from('documentos').select('id, paciente_id, consulta_id, clinica_id, tipo, titulo, nome_arquivo, emitido_em, resumo, arquivo_path, paginas, anulado_em, motivo_anulacao, assinatura:dados->assinatura').order('emitido_em', { ascending: false });
         if (pacienteId) q = q.eq('paciente_id', pacienteId);
         if (consultaId) q = q.eq('consulta_id', consultaId);
         return ok(await q);
@@ -115,7 +115,9 @@
         if (blob) {
           const caminho = `${uid}/${doc.paciente_id}/${id}.pdf`;
           const { error } = await sb.storage.from('documentos').upload(caminho, blob, { contentType: 'application/pdf', upsert: false });
-          if (!error) arquivo_path = caminho; else console.warn('PDF não enviado ao armazenamento; será regerado a partir dos dados.', error);
+          if (!error) arquivo_path = caminho;
+          else if (doc.dados && doc.dados.assinatura) throw traduzErro(new Error('Não foi possível guardar o PDF assinado. Verifique a internet e tente de novo.'));
+          else console.warn('PDF não enviado ao armazenamento; será regerado a partir dos dados.', error);
         }
         return ok(await sb.from('documentos').insert({ ...doc, id, arquivo_path }).select().single());
       },
@@ -146,6 +148,29 @@
       async registrar(e) { ok(await sb.from('envios').insert(e)); }
     };
 
+    /* Assinatura digital (certificado ICP-Brasil em nuvem) — função assinar-documento */
+    const b64de = u => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+    const b64para = t => { const s = atob(t); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+    async function chamarAssinatura(body) {
+      const { data, error } = await sb.functions.invoke('assinar-documento', { body });
+      if (error) {
+        let msg = error.message, j = null;
+        try { j = await error.context.json(); if (j && j.erro) msg = j.erro; } catch (e) { /* sem corpo */ }
+        const er = new Error(/Failed to send|Failed to fetch|not found|404/i.test(msg) && !(j && j.erro) ? 'A assinatura digital ainda não foi ativada no servidor (função assinar-documento).' : msg);
+        if (j && j.precisaAutorizar) er.precisaAutorizar = true;
+        throw er;
+      }
+      return data;
+    }
+    const assinatura = {
+      status: () => chamarAssinatura({ acao: 'status' }),
+      autorizar: (provedor, cpf, duracao) => chamarAssinatura({ acao: 'autorizar', provedor, cpf, duracao }),
+      verificar: id => chamarAssinatura({ acao: 'verificar', id }),
+      encerrar: () => chamarAssinatura({ acao: 'encerrar' }),
+      async assinar(bytes, tipo) { const r = await chamarAssinatura({ acao: 'assinar', tipo, pdf: b64de(bytes) }); return { ...r, pdf: b64para(r.pdf) }; },
+      urlValidacao: id => `${String(cfg.SUPABASE_URL).replace(/\/$/, '')}/functions/v1/receita/${id}`
+    };
+
     const cid = {
       async buscar(termo) {
         const t = normTxt(termo).trim(); if (t.length < 2) return [];
@@ -168,7 +193,7 @@
       return { exportado_em: agora(), perfis: p, clinicas: cl, pacientes: pa, paciente_clinicas: pc, consultas: co, favoritos: fa, modelos: mo, documentos: dc };
     }
 
-    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, exportar };
+    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, assinatura, exportar };
   }
 
   const normTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -230,6 +255,16 @@
       async email() { await tick(null); throw new Error('Na demonstração o e-mail não é enviado. Com o banco conectado, os PDFs vão anexados para a paciente.'); },
       async registrar() { return tick(null); }
     };
+    // Demonstração: assinatura simulada (o PDF sai marcado como TESTE, sem validade)
+    let sessaoDemo = null;
+    const assinatura = {
+      async status() { return tick({ provedores: { vidaas: false, teste: true }, sessao: sessaoDemo, demo: true }); },
+      async autorizar(provedor) { sessaoDemo = { provedor: 'teste', expira_em: new Date(Date.now() + 8 * 3600e3).toISOString() }; return tick({ id: 'demo', ativa: true }); },
+      async verificar() { return tick({ ativa: true }); },
+      async encerrar() { sessaoDemo = null; return tick({ ok: true }); },
+      async assinar(bytes) { const d = load(); return tick({ pdf: bytes, provedor: 'teste', em: agora(), assinante: { nome: [d.perfil.tratamento, d.perfil.nome].filter(Boolean).join(' '), cpf: '' } }); },
+      urlValidacao: id => `https://exemplo.supabase.co/functions/v1/receita/${id}`
+    };
     const cid = {
       async buscar(termo) {
         const t = normTxt(termo).trim(); if (t.length < 2) return [];
@@ -263,7 +298,7 @@
       async remove(id) { const d = load(); const c = d.consultas.find(x => x.id === id); if (c && c.status === 'finalizada') throw new Error('Consulta finalizada não pode ser excluída (prontuário).'); d.consultas = d.consultas.filter(x => x.id !== id); persist(); }
     };
     async function exportar() { return { exportado_em: agora(), ...load() }; }
-    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
+    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, assinatura, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
   }
 
   // Na demonstração, os modelos sugeridos já vêm carregados

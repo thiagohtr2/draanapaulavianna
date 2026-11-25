@@ -4,7 +4,7 @@
 //   RESEND_API_KEY   — chave da conta Resend (resend.com)
 //   EMAIL_REMETENTE  — ex.: "Dra. Ana Paula Vianna <consultorio@seudominio.com.br>" (domínio verificado no Resend)
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
+import { encodeBase64 } from '../_shared/base64.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
