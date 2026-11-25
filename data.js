@@ -101,6 +101,61 @@
       async remove(id) { ok(await sb.from('favoritos').delete().eq('id', id)); }
     };
 
+    const documentos = {
+      async list({ pacienteId, consultaId } = {}) {
+        let q = sb.from('documentos').select('id, paciente_id, consulta_id, clinica_id, tipo, titulo, nome_arquivo, emitido_em, resumo, arquivo_path, paginas, anulado_em, motivo_anulacao').order('emitido_em', { ascending: false });
+        if (pacienteId) q = q.eq('paciente_id', pacienteId);
+        if (consultaId) q = q.eq('consulta_id', consultaId);
+        return ok(await q);
+      },
+      async get(id) { return ok(await sb.from('documentos').select('*').eq('id', id).maybeSingle()); },
+      async salvar(doc, blob) {
+        const id = doc.id || uuid();
+        let arquivo_path = null;
+        if (blob) {
+          const caminho = `${uid}/${doc.paciente_id}/${id}.pdf`;
+          const { error } = await sb.storage.from('documentos').upload(caminho, blob, { contentType: 'application/pdf', upsert: false });
+          if (!error) arquivo_path = caminho; else console.warn('PDF não enviado ao armazenamento; será regerado a partir dos dados.', error);
+        }
+        return ok(await sb.from('documentos').insert({ ...doc, id, arquivo_path }).select().single());
+      },
+      async pdf(doc) {
+        if (!doc.arquivo_path) return null;
+        const { data, error } = await sb.storage.from('documentos').download(doc.arquivo_path);
+        return error ? null : data;
+      },
+      async anular(id, motivo) { return ok(await sb.from('documentos').update({ anulado_em: agora(), motivo_anulacao: motivo || '' }).eq('id', id).select().single()); },
+      async linkTemporario(doc, dias = 7) {
+        const path = doc.arquivo_path || (await documentos.get(doc.id) || {}).arquivo_path;
+        if (!path) return '';
+        const { data, error } = await sb.storage.from('documentos').createSignedUrl(path, dias * 86400, { download: doc.nome_arquivo });
+        return error ? '' : data.signedUrl;
+      }
+    };
+
+    const envios = {
+      async email({ documentos: ids, para, assunto, mensagem, pacienteId }) {
+        const { data, error } = await sb.functions.invoke('enviar-documentos', { body: { documentos: ids, para, assunto, mensagem, paciente_id: pacienteId } });
+        if (error) {
+          let msg = error.message;
+          try { const j = await error.context.json(); if (j && j.erro) msg = j.erro; } catch (e) { /* sem corpo */ }
+          throw traduzErro(new Error(/Failed to send|not found|404/i.test(msg) ? 'O envio por e-mail ainda não foi configurado no servidor.' : msg));
+        }
+        return data;
+      },
+      async registrar(e) { ok(await sb.from('envios').insert(e)); }
+    };
+
+    const cid = {
+      async buscar(termo) {
+        const t = normTxt(termo).trim(); if (t.length < 2) return [];
+        const codigo = /^[a-z]\d/.test(t);
+        let q = sb.from('cid10').select('codigo, descricao').order('codigo').limit(25);
+        q = codigo ? q.ilike('busca', t.replace('.', '') + '%') : q.ilike('busca', '%' + t.split(/\s+/).join('%') + '%');
+        return ok(await q);
+      }
+    };
+
     const modelos = {
       async list() { return ok(await sb.from('modelos').select('*').order('nome')); },
       async save(m) { const { id, owner_id, criado_em, atualizado_em, ...rest } = m; return id ? ok(await sb.from('modelos').update(rest).eq('id', id).select().single()) : ok(await sb.from('modelos').insert(rest).select().single()); },
@@ -109,12 +164,14 @@
     };
 
     async function exportar() {
-      const [p, cl, pa, pc, co, fa, mo] = await Promise.all(['perfis', 'clinicas', 'pacientes', 'paciente_clinicas', 'consultas', 'favoritos', 'modelos'].map(t => sb.from(t).select('*').then(ok)));
-      return { exportado_em: agora(), perfis: p, clinicas: cl, pacientes: pa, paciente_clinicas: pc, consultas: co, favoritos: fa, modelos: mo };
+      const [p, cl, pa, pc, co, fa, mo, dc] = await Promise.all(['perfis', 'clinicas', 'pacientes', 'paciente_clinicas', 'consultas', 'favoritos', 'modelos', 'documentos'].map(t => sb.from(t).select('*').then(ok)));
+      return { exportado_em: agora(), perfis: p, clinicas: cl, pacientes: pa, paciente_clinicas: pc, consultas: co, favoritos: fa, modelos: mo, documentos: dc };
     }
 
-    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, exportar };
+    return { modo: 'supabase', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, exportar };
   }
+
+  const normTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   function traduzErro(e) {
     const m = (e && (e.message || e.error_description)) || String(e);
@@ -136,7 +193,7 @@
   function demoDB() {
     const KEY = 'apv-demo-v1';
     let mem = null;
-    const load = () => { if (mem) return mem; try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; } if (!mem) { mem = seed(); persist(); } if (!mem.modelos) { mem.modelos = seedModelos(); persist(); } return mem; };
+    const load = () => { if (mem) return mem; try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; } if (!mem) { mem = seed(); persist(); } if (!mem.modelos) { mem.modelos = seedModelos(); persist(); } if (!mem.documentos) { mem.documentos = []; persist(); } return mem; };
     const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* modo privado: fica só na memória */ } };
     const tick = (v) => new Promise(r => setTimeout(() => r(JSON.parse(JSON.stringify(v))), 60));
     let logado = false; try { logado = sessionStorage.getItem('apv-demo-login') === '1'; } catch (e) {}
@@ -161,6 +218,26 @@
     const favoritos = coll('favoritos', porNome);
     const modelos = coll('modelos', porNome);
     modelos.saveMany = async (lista) => { const d = load(); const novos = lista.map(m => ({ ...m, id: uuid(), criado_em: agora() })); d.modelos.push(...novos); persist(); return tick(novos); };
+    const documentos = {
+      async list({ pacienteId, consultaId } = {}) { let a = [...load().documentos].sort((x, y) => y.emitido_em.localeCompare(x.emitido_em)); if (pacienteId) a = a.filter(x => x.paciente_id === pacienteId); if (consultaId) a = a.filter(x => x.consulta_id === consultaId); return tick(a); },
+      async get(id) { return tick(load().documentos.find(x => x.id === id) || null); },
+      async salvar(doc) { const d = load(); const n = { emitido_em: agora(), ...doc, id: doc.id || uuid(), arquivo_path: null, anulado_em: null, motivo_anulacao: '' }; d.documentos.push(n); persist(); return tick(n); },
+      async pdf() { return null; },
+      async anular(id, motivo) { const d = load(); const x = d.documentos.find(y => y.id === id); x.anulado_em = agora(); x.motivo_anulacao = motivo || ''; persist(); return tick(x); },
+      async linkTemporario() { return ''; }
+    };
+    const envios = {
+      async email() { await tick(null); throw new Error('Na demonstração o e-mail não é enviado. Com o banco conectado, os PDFs vão anexados para a paciente.'); },
+      async registrar() { return tick(null); }
+    };
+    const cid = {
+      async buscar(termo) {
+        const t = normTxt(termo).trim(); if (t.length < 2) return [];
+        const partes = t.split(/\s+/);
+        const lista = (window.CID_DEMO || []).filter(c => { const b = normTxt(c.codigo.replace('.', '') + ' ' + c.codigo + ' ' + c.descricao); return /^[a-z]\d/.test(t) ? b.startsWith(t.replace('.', '')) : partes.every(p => b.includes(p)); });
+        return tick(lista.slice(0, 25));
+      }
+    };
     const pacientes = {
       async list() { const d = load(); const ult = {}; [...d.consultas].sort((a, b) => b.data.localeCompare(a.data)).forEach(c => { if (!ult[c.paciente_id]) ult[c.paciente_id] = c.data; }); return tick(d.pacientes.map(p => ({ ...p, clinicas: d.pc.filter(x => x.paciente_id === p.id).map(x => x.clinica_id), ultima: ult[p.id] || null })).sort(porNome)); },
       async get(id) { const d = load(); const p = d.pacientes.find(x => x.id === id); return p ? tick({ ...p, clinicas: d.pc.filter(x => x.paciente_id === id).map(x => x.clinica_id) }) : null; },
@@ -186,7 +263,7 @@
       async remove(id) { const d = load(); const c = d.consultas.find(x => x.id === id); if (c && c.status === 'finalizada') throw new Error('Consulta finalizada não pode ser excluída (prontuário).'); d.consultas = d.consultas.filter(x => x.id !== id); persist(); }
     };
     async function exportar() { return { exportado_em: agora(), ...load() }; }
-    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
+    return { modo: 'demo', auth, perfil, clinicas, pacientes, consultas, favoritos, modelos, documentos, cid, envios, exportar, limpar() { mem = null; try { localStorage.removeItem(KEY); } catch (e) {} } };
   }
 
   // Na demonstração, os modelos sugeridos já vêm carregados
@@ -195,7 +272,16 @@
   }
 
   function seed() {
-    const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid();
+    const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid(), k1 = uuid(), k2 = uuid(), k3 = uuid();
+    const MED = { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: '' };
+    const CL = { [c1]: { nome: 'Clínica Vida Mulher', endereco: 'Av. Tancredo Neves, 1000, sala 501', bairro: 'Caminho das Árvores', cidade: 'Salvador', uf: 'BA', cep: '41820-020', telefone: '(71) 3000-0000', email: 'contato@vidamulher.exemplo' }, [c2]: { nome: 'Centro Médico Ondina', endereco: 'Rua Exemplo, 45', bairro: 'Ondina', cidade: 'Salvador', uf: 'BA', cep: '40170-000', telefone: '(71) 3111-1111', email: '' } };
+    const PAC = { [p1]: { nome: 'Mariana Souza Lima', nome_social: '', data_nascimento: '1991-05-12', sexo: 'F', cpf: '' }, [p2]: { nome: 'Juliana Costa Ferreira', nome_social: '', data_nascimento: '1987-09-30', sexo: 'F', cpf: '' } };
+    const docSeed = (consulta, pac, cl, n, extra, titulo, resumo) => {
+      const data = dias(n);
+      const dados = { medico: MED, clinica: CL[cl], paciente: PAC[pac], data, tamanho: 'A4', marcaDagua: true, ...extra };
+      const nome = window.DocumentosPDF ? window.DocumentosPDF.nomeDoArquivo(PAC[pac].nome, extra.tipo === 'exames' ? 'Solicitacao de exames' : titulo, new Date(data)) : titulo + '.pdf';
+      return { id: uuid(), paciente_id: pac, consulta_id: consulta, clinica_id: cl, tipo: extra.tipo, titulo, nome_arquivo: nome, emitido_em: data, dados, resumo, arquivo_path: null, paginas: extra.itens && extra.itens.some(i => i.antimicrobiano) ? 2 : 1, anulado_em: null, motivo_anulacao: '' };
+    };
     const dias = n => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(9 + (n % 7), 30, 0, 0); return d.toISOString(); };
     return {
       perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true, modelos_iniciados: true },
@@ -210,20 +296,21 @@
       ],
       pc: [{ paciente_id: p1, clinica_id: c1 }, { paciente_id: p1, clinica_id: c2 }, { paciente_id: p2, clinica_id: c1 }, { paciente_id: p3, clinica_id: c2 }],
       consultas: [
-        { id: uuid(), paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', status: 'finalizada', finalizada_em: dias(62),
-          registro: { motivo: 'Desejo de engravidar.', hda: 'Tentando engravidar há 14 meses, ciclos regulares.', dum: '', ciclo: 'Regular, 28/5 dias', gestacoes: '0', partos: '0', cesareas: '0', abortos: '0', contracepcao: 'Nenhum há 14 meses', tentante: '14 meses', pa: '110x70', peso: '62', altura: '1,64', exame_fisico: 'Bom estado geral.', exame_gineco: 'Especular sem alterações.', resultados: '', hipotese: 'Infertilidade conjugal a esclarecer', cid: 'N97.9', conduta: 'Solicitada investigação inicial do casal.', retorno: 'Com exames', indicacao_exames: 'Investigação de infertilidade conjugal.' },
-          prescricao: [{ nome: 'Ácido fólico', apresentacao: '5 mg', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido ao dia, de uso contínuo.' }],
-          exames: [{ nome: 'Hormônio antimülleriano (AMH)' }, { nome: 'TSH e T4 livre' }, { nome: 'Ultrassonografia transvaginal com contagem de folículos antrais' }], orientacoes: 'Retorno com os exames.', adendos: [] },
-        { id: uuid(), paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', status: 'rascunho',
+        { id: k1, paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', status: 'finalizada', finalizada_em: dias(62),
+          registro: { motivo: 'Desejo de engravidar.', hda: 'Tentando engravidar há 14 meses, ciclos regulares.', ciclo: 'Regular, 28/5 dias', gestacoes: '0', partos: '0', cesareas: '0', abortos: '0', contracepcao: 'Nenhum há 14 meses', tentante: '14 meses', pa: '110x70', peso: '62', altura: '1,64', exame_fisico: 'Bom estado geral.', exame_gineco: 'Especular sem alterações.', hipotese: 'Infertilidade feminina não especificada', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Solicitada investigação inicial do casal.', retorno: 'Com exames' },
+          prescricao: [], exames: [], orientacoes: '', adendos: [] },
+        { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', status: 'rascunho',
           registro: { motivo: 'Retorno com exames.', hipotese: '', conduta: '' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: uuid(), paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Consulta', status: 'finalizada', finalizada_em: dias(20),
-          registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', conduta: 'Tratamento oral.' },
-          prescricao: [{ nome: 'Metronidazol', apresentacao: '500 mg', via: 'Oral', quantidade: '14 comprimidos', posologia: 'Tomar 1 comprimido de 12 em 12 horas por 7 dias.', antimicrobiano: true }], exames: [], orientacoes: 'Evitar bebida alcoólica durante o tratamento e até 48 horas após.', adendos: [] }
+        { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Consulta', status: 'finalizada', finalizada_em: dias(20),
+          registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', cid_desc: 'Vaginite aguda', conduta: 'Tratamento oral.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] }
+      ],
+      documentos: [
+        docSeed(k1, p1, c1, 62, { tipo: 'receita', itens: [{ nome: 'Ácido fólico', apresentacao: '5 mg comprimido', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido ao dia, de uso contínuo.', antimicrobiano: false, controlado: false }], orientacoes: 'Retorno com os exames.', incluirOrientacoes: true }, 'Receita', 'Ácido fólico 5 mg comprimido'),
+        docSeed(k1, p1, c1, 62, { tipo: 'exames', exames: [{ nome: 'Hormônio antimülleriano (AMH)' }, { nome: 'TSH e T4 livre' }, { nome: 'Ultrassonografia transvaginal com contagem de folículos antrais' }], indicacao: 'Investigação de infertilidade conjugal.' }, 'Solicitação de exames', 'Hormônio antimülleriano (AMH) · TSH e T4 livre · Ultrassonografia transvaginal com contagem de folículos antrais'),
+        docSeed(k3, p2, c1, 20, { tipo: 'receita', itens: [{ nome: 'Metronidazol', apresentacao: '250 mg comprimido', via: 'Oral', quantidade: '28 comprimidos', posologia: 'Tomar 2 comprimidos de 12 em 12 horas por 7 dias.', antimicrobiano: true, controlado: false }], orientacoes: 'Evitar bebida alcoólica durante o tratamento e até 24 horas após.', incluirOrientacoes: true }, 'Receita', 'Metronidazol 250 mg comprimido')
       ],
       modelos: seedModelos(),
-      favoritos: [
-        { id: uuid(), nome: 'Ácido fólico', apresentacao: '5 mg', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido ao dia, de uso contínuo.', antimicrobiano: false, controlado: false }
-      ]
+      favoritos: (() => { const vistos = new Set(); const out = []; (window.MODELOS_BASE || []).filter(m => m.tipo === 'prescricao').forEach(m => (m.conteudo.itens || []).forEach(i => { const k = i.nome + '|' + i.apresentacao; if (!vistos.has(k)) { vistos.add(k); out.push({ id: uuid(), ...i }); } })); return out; })()
     };
   }
 

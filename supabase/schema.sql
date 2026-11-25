@@ -263,3 +263,120 @@ revoke all on public.modelos from anon;
 
 -- Bancos criados antes desta coluna existir
 alter table public.perfis add column if not exists modelos_iniciados boolean not null default false;
+
+-- =====================================================================
+--  CID-10 (DATASUS) — referência compartilhada, somente leitura
+--  Dados: rode supabase/cid10_importar.sql depois deste arquivo.
+-- =====================================================================
+create table if not exists public.cid10 (
+  codigo     text primary key,
+  descricao  text not null,
+  nivel      text not null check (nivel in ('categoria','subcategoria')),
+  capitulo   smallint,
+  restr_sexo text check (restr_sexo in ('F','M')),
+  busca      text not null
+);
+create index if not exists cid10_busca_idx on public.cid10 (busca text_pattern_ops);
+alter table public.cid10 enable row level security;
+drop policy if exists cid10_leitura on public.cid10;
+create policy cid10_leitura on public.cid10 for select to authenticated using (true);
+revoke all on public.cid10 from anon;
+revoke insert, update, delete, truncate on public.cid10 from authenticated;
+
+-- =====================================================================
+--  Documentos emitidos (receitas, atestados, exames, orientações, registros)
+--  Imutáveis: só podem ser anulados (com motivo). PDFs no bucket privado.
+-- =====================================================================
+create table if not exists public.documentos (
+  id               uuid primary key default gen_random_uuid(),
+  owner_id         uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  paciente_id      uuid not null references public.pacientes(id) on delete restrict,
+  consulta_id      uuid references public.consultas(id) on delete set null,
+  clinica_id       uuid references public.clinicas(id) on delete restrict,
+  tipo             text not null check (tipo in ('receita','exames','atestado','orientacoes','registro')),
+  titulo           text not null,
+  nome_arquivo     text not null,
+  emitido_em       timestamptz not null default now(),
+  dados            jsonb not null default '{}'::jsonb,
+  resumo           text not null default '',
+  arquivo_path     text,
+  paginas          smallint,
+  anulado_em       timestamptz,
+  motivo_anulacao  text not null default ''
+);
+create index if not exists documentos_pac_idx on public.documentos(paciente_id, emitido_em desc);
+create index if not exists documentos_owner_idx on public.documentos(owner_id, emitido_em desc);
+create index if not exists documentos_consulta_idx on public.documentos(consulta_id);
+create index if not exists documentos_clinica_idx on public.documentos(clinica_id);
+
+create or replace function public.tg_documento_guard() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'Documento emitido não pode ser excluído; use "Anular".';
+  end if;
+  if new.paciente_id is distinct from old.paciente_id or new.tipo is distinct from old.tipo
+     or new.titulo is distinct from old.titulo or new.dados is distinct from old.dados
+     or new.emitido_em is distinct from old.emitido_em or new.nome_arquivo is distinct from old.nome_arquivo
+     or new.clinica_id is distinct from old.clinica_id or new.owner_id is distinct from old.owner_id
+     or (old.arquivo_path is not null and new.arquivo_path is distinct from old.arquivo_path)
+     or (old.anulado_em is not null and new.anulado_em is distinct from old.anulado_em) then
+    raise exception 'Documento emitido não pode ser alterado.';
+  end if;
+  if new.consulta_id is distinct from old.consulta_id and new.consulta_id is not null then
+    raise exception 'Documento emitido não pode ser alterado.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists documento_guard_upd on public.documentos;
+create trigger documento_guard_upd before update on public.documentos for each row execute function public.tg_documento_guard();
+drop trigger if exists documento_guard_del on public.documentos;
+create trigger documento_guard_del before delete on public.documentos for each row execute function public.tg_documento_guard();
+
+alter table public.documentos enable row level security;
+drop policy if exists documentos_ler on public.documentos;
+create policy documentos_ler on public.documentos for select to authenticated using (owner_id = (select auth.uid()));
+drop policy if exists documentos_criar on public.documentos;
+create policy documentos_criar on public.documentos for insert to authenticated
+  with check (
+    owner_id = (select auth.uid())
+    and exists (select 1 from public.pacientes p where p.id = paciente_id and p.owner_id = (select auth.uid()))
+    and (clinica_id is null or exists (select 1 from public.clinicas c where c.id = clinica_id and c.owner_id = (select auth.uid())))
+    and (consulta_id is null or exists (select 1 from public.consultas c where c.id = consulta_id and c.owner_id = (select auth.uid())))
+  );
+drop policy if exists documentos_anular on public.documentos;
+create policy documentos_anular on public.documentos for update to authenticated
+  using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
+revoke all on public.documentos from anon;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('documentos', 'documentos', false, 10485760, array['application/pdf'])
+on conflict (id) do update set public = false, file_size_limit = 10485760, allowed_mime_types = array['application/pdf'];
+drop policy if exists documentos_pdf_ler on storage.objects;
+create policy documentos_pdf_ler on storage.objects for select to authenticated
+  using (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists documentos_pdf_enviar on storage.objects;
+create policy documentos_pdf_enviar on storage.objects for insert to authenticated
+  with check (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- =====================================================================
+--  Histórico de envios à paciente (e-mail / WhatsApp)
+-- =====================================================================
+create table if not exists public.envios (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  paciente_id uuid not null references public.pacientes(id) on delete restrict,
+  canal       text not null check (canal in ('email','whatsapp')),
+  destino     text not null default '',
+  documentos  uuid[] not null default '{}',
+  criado_em   timestamptz not null default now()
+);
+create index if not exists envios_pac_idx on public.envios(paciente_id, criado_em desc);
+create index if not exists envios_owner_idx on public.envios(owner_id);
+alter table public.envios enable row level security;
+drop policy if exists envios_ler on public.envios;
+create policy envios_ler on public.envios for select to authenticated using (owner_id = (select auth.uid()));
+drop policy if exists envios_criar on public.envios;
+create policy envios_criar on public.envios for insert to authenticated
+  with check (owner_id = (select auth.uid()) and exists (select 1 from public.pacientes p where p.id = paciente_id and p.owner_id = (select auth.uid())));
+revoke all on public.envios from anon;

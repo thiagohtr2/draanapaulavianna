@@ -8,6 +8,7 @@ Funciona no celular, tablet e computador. Site estático (HTML, CSS e JavaScript
 1. Em https://supabase.com crie um projeto (de preferência na conta da própria
    Dra. Ana Paula, região **South America (São Paulo)**).
 2. Abra **SQL Editor → New query**, cole todo o arquivo `supabase/schema.sql` e clique **Run**.
+   Depois rode `supabase/cid10_importar.sql` para carregar a CID-10.
    Ele cria as tabelas e a segurança (cada usuária só enxerga os próprios dados;
    consulta finalizada não pode ser alterada nem apagada — só recebe adendos).
 3. Em **Project Settings → API** copie o *Project URL* e a chave *publishable* (ou *anon public*)
@@ -48,6 +49,29 @@ Depois aponte um domínio próprio, se quiser.
 - Atestados aceitam campos automáticos: {paciente} {cpf} {data} {hora} {idade} {clinica};
   {dias} e qualquer outro {campo} são perguntados na hora. O CID só sai com a autorização
   expressa da paciente (Resolução CFM 2.381/2024).
+
+## Documentos da paciente
+- Na consulta, a seção **Documentos** emite quantos documentos forem precisos — receita, solicitação de
+  exames, atestado e orientações — cada um com seu próprio editor.
+- Ao tocar em **Salvar e gerar PDF**, o documento fica guardado na ficha da paciente (aba Documentos), com
+  data e hora, e pode ser aberto, impresso, baixado ou reenviado depois. Documento emitido não é alterado
+  nem apagado: só pode ser **anulado**, com motivo, e continua no histórico.
+- Nome dos arquivos: `Primeiro_Ultimo_Documento_dd-mm-aaaa.pdf` (ex.: `Mariana_Lima_Receita_25-11-2026.pdf`).
+- **Enviar para a paciente**: por e-mail (PDFs anexados) ou WhatsApp — no celular os PDFs vão anexados pelo
+  compartilhamento; no computador abre o WhatsApp com a mensagem pronta e links seguros válidos por 7 dias.
+
+## Medicamentos, receitas padrão e CID-10
+- **Modelos → Medicamentos**: seu banco de medicamentos. Na receita, um toque adiciona o medicamento já com
+  apresentação, quantidade e posologia, e tudo pode ser editado no próprio formulário.
+- **Receitas padrão**: escolha medicamentos do banco, ajuste e salve com um nome; use em outras pacientes.
+- **CID-10 completa (DATASUS)** no banco, com busca por código ou nome, na avaliação e no atestado.
+
+## Envio por e-mail (configuração única)
+1. Crie uma conta em https://resend.com e verifique um domínio seu (ex.: consultorio.seudominio.com.br).
+2. Gere uma API key.
+3. No Supabase: **Edge Functions → Secrets** e crie `RESEND_API_KEY` (a chave) e `EMAIL_REMETENTE`
+   (ex.: `Dra. Ana Paula Vianna <consultorio@seudominio.com.br>`).
+A função `enviar-documentos` (pasta `supabase/functions`) já está publicada no projeto.
 
 ## Pacientes
 Busca por nome, CPF, telefone, e-mail ou convênio; ordenação por nome (A–Z/Z–A), última consulta,

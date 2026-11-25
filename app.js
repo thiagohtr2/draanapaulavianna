@@ -126,11 +126,11 @@
   /* ---------------- ditado por voz ---------------- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let reconhecedor = null;
-  function areaTexto(id, name, valor, { rot, linhas = 4, ph = '', padrao = true, campo } = {}) {
+  function areaTexto(id, name, valor, { rot, linhas = 4, ph = '', padrao = true, campo, attrs = '' } = {}) {
     const key = campo || String(name || '').replace(/^registro\./, '');
     const mic = SR ? `<button type="button" class="tool-btn mic" data-mic="${id}" aria-pressed="false" aria-label="Ditar ${esc(rot || '')} por voz">${ICON.mic}</button>` : '';
     const pad = padrao && key ? `<button type="button" class="pad-btn" data-padrao="${esc(key)}" data-alvo="${id}" data-rot="${esc(rot || '')}" aria-label="Textos padrão de ${esc(rot || '')}">${ICON.text}<span>Padrões</span></button>` : '';
-    return `<div class="field"><div class="ta-head"><label for="${id}" class="label">${rot}</label>${mic || pad ? `<div class="ta-tools">${mic}${pad}</div>` : ''}</div><textarea id="${id}" name="${name}" rows="${linhas}" placeholder="${esc(ph)}">${esc(valor)}</textarea></div>`;
+    return `<div class="field"><div class="ta-head"><label for="${id}" class="label">${rot}</label>${mic || pad ? `<div class="ta-tools">${mic}${pad}</div>` : ''}</div><textarea id="${id}" ${name ? `name="${name}"` : ''} ${attrs} rows="${linhas}" placeholder="${esc(ph)}">${esc(valor)}</textarea></div>`;
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-mic]'); if (!b || !SR) return;
@@ -154,7 +154,7 @@
   let downloadsCap = null;
   if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { downloadsCap = d; }).catch(() => {});
 
-  function mostrarPDF(r, titulo) {
+  function mostrarPDF(r, titulo, naoSalvo) {
     const url = URL.createObjectURL(r.blob);
     const file = typeof File === 'function' ? new File([r.blob], r.nomeArquivo, { type: 'application/pdf' }) : null;
     const podeCompartilhar = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
@@ -163,7 +163,7 @@
     const avisos = (r.avisos || []).map(a => `<div class="alert">${ICON.alert}<p>${esc(a)}</p></div>`).join('');
     abrirDialogo({
       titulo, largo: previa,
-      corpo: `<div class="stack">${avisos}
+      corpo: `<div class="stack">${naoSalvo ? `<div class="alert">${ICON.alert}<p>Pré-visualização: este PDF ainda <b>não foi salvo</b> na ficha da paciente. Feche e use “Salvar e gerar PDF” para guardar.</p></div>` : ''}${avisos}
         ${previa ? `<iframe class="pdf-frame" src="${url}" title="Pré-visualização do PDF"></iframe>` : `<div class="summary-card"><b>${esc(r.nomeArquivo)}</b><p class="muted small">${r.paginas} ${r.paginas === 1 ? 'página' : 'páginas'} · pronto para imprimir, enviar ou salvar</p></div>`}
         <p class="small muted">Imprima e assine, ou assine digitalmente com certificado ICP-Brasil antes de enviar.</p></div>`,
       rodape: `${podeCompartilhar ? `<button class="btn btn-ghost" data-share>${ICON.share}Enviar</button>` : ''}
@@ -485,9 +485,10 @@
     });
   }
 
+  let abaFicha = 'cons';
   async function viewPaciente(main, id) {
     main.innerHTML = `<div class="skeleton"></div>`;
-    const [p, cs] = await Promise.all([DB.pacientes.get(id), DB.consultas.list({ pacienteId: id })]);
+    let [p, cs, docs] = await Promise.all([DB.pacientes.get(id), DB.consultas.list({ pacienteId: id }), DB.documentos.list({ pacienteId: id })]);
     if (!p) { main.innerHTML = `<div class="empty"><h2>Paciente não encontrada</h2><p><a href="#pacientes">Voltar para pacientes</a></p></div>`; return; }
     let filtro = '';
     const clinsDasConsultas = [...new Set(cs.map(c => c.clinica_id))].map(clinicaPorId).filter(Boolean);
@@ -503,9 +504,19 @@
         <div class="pac-facts">${fato('Telefone', p.telefone)}${fato('E-mail', p.email)}${fato('CPF', p.cpf)}${fato('Carteirinha', p.carteirinha)}${fato('Profissão', p.profissao)}${fato('Endereço', [p.endereco, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' — '))}${fato('Antecedentes', p.antecedentes)}${fato('Medicações em uso', p.medicacoes_uso)}${fato('Observações', p.observacoes)}</div>
         <div class="actions" style="margin-top:20px"><button class="btn btn-primary" data-x="nova">${ICON.plus}Nova consulta</button><button class="btn btn-ghost" data-x="editar">Editar ficha</button></div>
       </section>
-      <div class="page-head" style="margin:2rem 0 .5rem"><h2>Consultas</h2><span class="muted small">${cs.length} ${cs.length === 1 ? 'registro' : 'registros'}</span></div>
-      ${clinsDasConsultas.length > 1 ? `<div class="filter-chips" role="group" aria-label="Filtrar consultas por clínica"><button type="button" data-f="" aria-pressed="true">Todas</button>${clinsDasConsultas.map(c => `<button type="button" data-f="${esc(c.id)}" aria-pressed="false">${esc(c.nome)}</button>`).join('')}</div>` : ''}
-      <div id="tl"></div>`;
+      <div class="tabs abas-ficha" role="tablist" aria-label="Histórico da paciente">
+        <button type="button" role="tab" id="tab-cons" aria-controls="pn-cons" aria-selected="${abaFicha !== 'docs'}" data-aba="cons">Consultas (${cs.length})</button>
+        <button type="button" role="tab" id="tab-docs" aria-controls="pn-docs" aria-selected="${abaFicha === 'docs'}" data-aba="docs">Documentos (<span id="n-docs">${docs.length}</span>)</button>
+      </div>
+      <div id="pn-cons" role="tabpanel" aria-labelledby="tab-cons" ${abaFicha === 'docs' ? 'hidden' : ''}>
+        ${clinsDasConsultas.length > 1 ? `<div class="filter-chips" role="group" aria-label="Filtrar consultas por clínica"><button type="button" data-f="" aria-pressed="true">Todas</button>${clinsDasConsultas.map(c => `<button type="button" data-f="${esc(c.id)}" aria-pressed="false">${esc(c.nome)}</button>`).join('')}</div>` : ''}
+        <div id="tl"></div>
+      </div>
+      <div id="pn-docs" role="tabpanel" aria-labelledby="tab-docs" ${abaFicha === 'docs' ? '' : 'hidden'}>
+        <div class="page-head" style="margin:0 0 12px"><p class="muted small">Tudo o que foi emitido para ${esc((p.nome || '').split(' ')[0])}, com data e hora. Abra para imprimir, baixar ou reenviar.</p><div class="actions"><button type="button" class="btn btn-ghost" data-x="enviar-docs">${ICON.share}Enviar</button><button type="button" class="btn btn-primary" data-x="novo-doc">${ICON.plus}Novo documento</button></div></div>
+        <div class="filter-chips" role="group" aria-label="Filtrar documentos por tipo" style="margin-bottom:12px"><button type="button" data-fd="" aria-pressed="true">Todos</button>${Object.entries(NOME_DOC).map(([k, t]) => `<button type="button" data-fd="${k}" aria-pressed="false">${t}</button>`).join('')}</div>
+        <div id="docs-pac"></div>
+      </div>`;
     const tl = $('#tl', main);
     const desenhar = () => {
       const lst = cs.filter(c => !filtro || c.clinica_id === filtro);
@@ -516,11 +527,25 @@
         if (y !== ano) { if (ano !== null) html += '</ol>'; html += `<p class="year">${y}</p><ol class="timeline">`; ano = y; }
         const cl = clinicaPorId(c.clinica_id); const r = c.registro || {};
         const resumo = r.hipotese || r.motivo || '';
-        html += `<li class="${c.status}"><a class="row" href="#consulta-${esc(c.id)}"><span class="grow"><span class="title">${fmtCurta(c.data)} · ${esc(c.tipo)}</span><span class="meta"><span>${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span>${(c.prescricao || []).length ? `<span>${c.prescricao.length} ${c.prescricao.length === 1 ? 'medicamento' : 'medicamentos'}</span>` : ''}</span>${resumo ? `<span class="small wrap-any">${esc(resumo.length > 140 ? resumo.slice(0, 140) + '…' : resumo)}</span>` : ''}</span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : '<span class="chip ok">Finalizada</span>'}</a></li>`;
+        html += `<li class="${c.status}"><a class="row" href="#consulta-${esc(c.id)}"><span class="grow"><span class="title">${fmtCurta(c.data)} · ${esc(c.tipo)}</span><span class="meta"><span>${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span>${(n => n ? `<span>${n} ${n === 1 ? 'documento' : 'documentos'}</span>` : '')(docs.filter(d => d.consulta_id === c.id).length)}</span>${resumo ? `<span class="small wrap-any">${esc(resumo.length > 140 ? resumo.slice(0, 140) + '…' : resumo)}</span>` : ''}</span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : '<span class="chip ok">Finalizada</span>'}</a></li>`;
       });
       tl.innerHTML = html + '</ol>';
     };
     $$('[data-f]', main).forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; $$('[data-f]', main).forEach(x => x.setAttribute('aria-pressed', String(x === b))); desenhar(); }));
+    let filtroDoc = '';
+    const desenharDocs = () => {
+      const box = $('#docs-pac', main); const lst = docs.filter(d => !filtroDoc || d.tipo === filtroDoc);
+      $('#n-docs', main).textContent = docs.length;
+      box.innerHTML = !docs.length ? `<div class="empty"><h3>Nenhum documento emitido</h3><p>Receitas, atestados e solicitações emitidos para esta paciente ficam guardados aqui.</p></div>`
+        : lst.length ? `<ul class="list">${lst.map(docLinhaHTML).join('')}</ul>` : `<p class="muted small">Nenhum documento deste tipo.</p>`;
+      ligarLinhasDoc(box, recarregarDocs);
+    };
+    const recarregarDocs = async () => { docs = await DB.documentos.list({ pacienteId: id }); desenharDocs(); };
+    $$('[data-fd]', main).forEach(b => b.addEventListener('click', () => { filtroDoc = b.dataset.fd; $$('[data-fd]', main).forEach(x => x.setAttribute('aria-pressed', String(x === b))); desenharDocs(); }));
+    $$('[data-aba]', main).forEach(b => b.addEventListener('click', () => { abaFicha = b.dataset.aba; $$('[data-aba]', main).forEach(x => x.setAttribute('aria-selected', String(x === b))); $('#pn-cons', main).hidden = abaFicha === 'docs'; $('#pn-docs', main).hidden = abaFicha !== 'docs'; }));
+    main.querySelector('[data-x="novo-doc"]').addEventListener('click', () => dialogoNovoDocumento(p, { depois: recarregarDocs }));
+    main.querySelector('[data-x="enviar-docs"]').addEventListener('click', () => { const v = docs.filter(d => !d.anulado_em); if (!v.length) return toast('Ainda não há documentos para enviar.', true); dialogoEnviar(p, v); });
+    desenharDocs();
     main.querySelector('[data-x="nova"]').addEventListener('click', () => dialogoNovaConsulta(p));
     main.querySelector('[data-x="editar"]').addEventListener('click', () => dialogoPaciente(p, () => viewPaciente(main, id)));
     desenhar();
@@ -601,18 +626,17 @@
     ['s-gineco', 'Ginecológico e obstétrico', r => r.dum || r.ciclo || r.menarca || r.gestacoes || r.contracepcao || r.tentante || r.preventivo || r.gineco_obs],
     ['s-exame', 'Exame físico', r => r.pa || r.peso || r.exame_fisico || r.exame_gineco],
     ['s-result', 'Exames e resultados', r => r.resultados],
-    ['s-aval', 'Avaliação e conduta', r => r.hipotese || r.conduta],
-    ['s-rx', 'Prescrição', (r, c) => (c.prescricao || []).length || c.orientacoes],
-    ['s-exsol', 'Solicitação de exames', (r, c) => (c.exames || []).length],
-    ['s-atest', 'Atestado', r => r.atestado]
+    ['s-aval', 'Avaliação e conduta', r => r.hipotese || r.conduta || r.cid],
+    ['s-docs', 'Documentos', r => DOCS_CONSULTA.length || docTemConteudo(r.doc_rascunho)]
   ];
+  let DOCS_CONSULTA = [];
 
   async function viewConsulta(main, id) {
     main.innerHTML = `<div class="skeleton"></div>`;
     C = await DB.consultas.get(id);
     if (!C) { main.innerHTML = `<div class="empty"><h2>Consulta não encontrada</h2><p><a href="#inicio">Voltar ao início</a></p></div>`; return; }
-    C.registro = C.registro || {}; C.prescricao = C.prescricao || []; C.exames = C.exames || []; C.adendos = C.adendos || [];
-    CP = await DB.pacientes.get(C.paciente_id);
+    C.registro = C.registro || {}; C.adendos = C.adendos || [];
+    [CP, DOCS_CONSULTA] = await Promise.all([DB.pacientes.get(C.paciente_id), DB.documentos.list({ consultaId: id })]);
     if (C.status === 'finalizada') return leituraConsulta(main);
     edicaoConsulta(main);
   }
@@ -673,85 +697,78 @@
           ${sec(3, areaTexto('r-res', 'registro.resultados', r.resultados, { rot: 'Resultados de exames trazidos (laboratório, ultrassom, outros)', linhas: 5 }))}
           ${sec(4, `<div class="grid grid-3">
               <div class="span-2">${inp('Hipótese diagnóstica', 'hipotese')}</div>
-              ${inp('CID-10', 'cid', 'placeholder="Ex.: N97.9" maxlength="8" style="text-transform:uppercase"')}
+              ${cidCampo('r-cid', r.cid, { attrs: 'name="registro.cid"', desc: r.cid_desc })}
             </div>
             <div class="stack" style="margin-top:12px">${areaTexto('r-cond', 'registro.conduta', r.conduta, { rot: 'Conduta e plano', linhas: 4 })}${inp('Retorno', 'retorno', 'placeholder="Ex.: 30 dias, com exames"')}</div>`)}
-          ${sec(5, `<datalist id="fav-list">${S.favoritos.map(f => `<option value="${esc(f.nome)}">${esc(f.apresentacao)}</option>`).join('')}</datalist>
-            <ol class="rx-list" id="rx-list"></ol>
-            <div class="actions" style="margin:12px 0 4px"><button type="button" class="btn btn-ghost" data-x="rx-add">${ICON.plus}Adicionar medicamento</button><button type="button" class="btn btn-ghost" data-x="usar-modelo" data-tipo="prescricao">${ICON.layers}Usar modelo</button>${S.favoritos.length ? `<button type="button" class="btn btn-quiet" data-x="rx-fav">${ICON.star}Usar favorito</button>` : ''}<button type="button" class="btn btn-quiet" data-x="salvar-modelo" data-tipo="prescricao">Salvar como modelo</button></div>
-            <div style="margin-top:16px">${areaTexto('c-orient', 'orientacoes', C.orientacoes, { rot: 'Orientações à paciente (saem no receituário)', linhas: 4, ph: 'Uma orientação por linha. Comece com “-” para virar tópico.' })}</div>
-            <label class="check"><input type="checkbox" name="registro.incluir_orientacoes" ${r.incluir_orientacoes !== false ? 'checked' : ''}> Incluir as orientações no receituário</label>
-            <div class="actions" style="margin-top:12px"><button type="button" class="btn btn-primary" data-x="pdf-rx">${ICON.doc}Gerar receituário</button></div>`)}
-          ${sec(6, `<ul class="ex-list" id="ex-list"></ul>
-            <div class="actions"><button type="button" class="btn btn-ghost" data-x="ex-add">${ICON.plus}Adicionar exame</button><button type="button" class="btn btn-ghost" data-x="usar-modelo" data-tipo="exames">${ICON.layers}Usar modelo</button><button type="button" class="btn btn-quiet" data-x="salvar-modelo" data-tipo="exames">Salvar como modelo</button></div>
-            <div style="margin-top:16px">${areaTexto('r-ind', 'registro.indicacao_exames', r.indicacao_exames, { rot: 'Indicação clínica', linhas: 2 })}</div>
-            <div class="actions" style="margin-top:12px"><button type="button" class="btn btn-primary" data-x="pdf-ex">${ICON.doc}Gerar solicitação de exames</button></div>`)}
-          ${sec(7, `<div class="actions" style="margin-bottom:12px"><button type="button" class="btn btn-ghost" data-x="usar-modelo" data-tipo="atestado">${ICON.layers}Usar modelo de atestado</button><button type="button" class="btn btn-quiet" data-x="salvar-modelo" data-tipo="atestado">Salvar como modelo</button></div>
-            <div class="stack">
-              ${campo('Título do documento', `<input id="r-atestado_titulo" name="registro.atestado_titulo" value="${v('atestado_titulo') || 'Atestado médico'}">`)}
-              ${areaTexto('r-atest', 'registro.atestado', r.atestado, { rot: 'Texto do atestado', linhas: 5, padrao: false, ph: 'Escolha um modelo ou escreva o texto.' })}
-              <div class="grid grid-2">
-                ${inp('CID-10 (opcional)', 'atestado_cid', 'maxlength="8" style="text-transform:uppercase"')}
-                <label class="check" style="align-self:end"><input type="checkbox" name="registro.atestado_cid_aut" ${r.atestado_cid_aut ? 'checked' : ''}> A paciente autorizou constar o CID</label>
-              </div>
-              <p class="small muted">O CID só sai no atestado com a autorização expressa da paciente (Resolução CFM 2.381/2024). Sem a marcação acima, ele é omitido.</p>
-            </div>
-            <div class="actions" style="margin-top:12px"><button type="button" class="btn btn-primary" data-x="pdf-at">${ICON.doc}Gerar atestado</button></div>`)}
+          ${sec(5, `<p class="muted small">Cada documento é salvo na ficha da paciente, com data e hora, assim que você gera o PDF. Você pode emitir quantos precisar.</p>
+            <div id="docs-lista" style="margin-top:12px"></div>
+            <p class="label" style="margin:16px 0 8px">Emitir documento</p>
+            <div class="actions doc-tipos">${TIPOS_DOC.map(([t, rot]) => `<button type="button" class="btn btn-ghost" data-x="doc-novo" data-tipo="${t}">${ICON.plus}${rot}</button>`).join('')}</div>
+            <div id="doc-editor"></div>`)}
           <div class="bottombar">
-            <button type="button" class="btn btn-ghost" data-x="pdf-rx">${ICON.doc}Receituário</button>
+            <button type="button" class="btn btn-ghost" data-x="ir-docs">${ICON.doc}Documentos</button>
             <button type="button" class="btn btn-primary" data-x="finalizar">${ICON.check}Finalizar consulta</button>
           </div>
           <p style="margin-top:16px;text-align:center"><button type="button" class="btn btn-quiet small" data-x="excluir">Excluir este rascunho</button></p>
         </form>
       </div>`;
     const f = $('#f-consulta', main);
-    desenharRx(); desenharEx(); calcIMC(); marcarSecoes();
+    calcIMC(); marcarSecoes(); desenharDocsConsulta(); abrirEditorConsulta();
 
     f.addEventListener('input', e => {
       const el = e.target;
-      if (el.dataset.rx != null) { const it = C.prescricao[+el.dataset.rx]; if (el.type === 'checkbox') it[el.dataset.k] = el.checked; else it[el.dataset.k] = el.value; }
-      else if (el.dataset.ex != null) C.exames[+el.dataset.ex].nome = el.value;
-      else if (el.name && el.name.startsWith('registro.')) { const k = el.name.slice(9); C.registro[k] = el.type === 'checkbox' ? el.checked : el.value; if (k === 'peso' || k === 'altura') calcIMC(); }
-      else if (el.name === 'orientacoes') C.orientacoes = el.value;
+      if (el.closest('#doc-editor')) return;
+      if (el.name && el.name.startsWith('registro.')) { const k = el.name.slice(9); C.registro[k] = el.type === 'checkbox' ? el.checked : el.value; if (k === 'peso' || k === 'altura') calcIMC(); if (k === 'cid' && !el.value) C.registro.cid_desc = ''; }
       else if (el.name === 'tipo') C.tipo = el.value;
       else if (el.name === 'data') { if (el.value) C.data = new Date(el.value).toISOString(); }
       else if (el.name === 'clinica_id') { C.clinica_id = el.value; if (!CP.clinicas.includes(el.value)) DB.pacientes.vincular(CP.id, el.value).then(() => CP.clinicas.push(el.value)).catch(falha); }
       else return;
       agendarSalvar(); marcarSecoes();
     });
-    f.addEventListener('change', e => {
-      const el = e.target;
-      if (el.dataset.rx != null && el.dataset.k === 'nome') {
-        const it = C.prescricao[+el.dataset.rx];
-        const fav = S.favoritos.find(x => norm(x.nome) === norm(it.nome));
-        if (fav && !it.posologia && !it.apresentacao) { Object.assign(it, { apresentacao: fav.apresentacao, via: fav.via, quantidade: fav.quantidade, posologia: fav.posologia, antimicrobiano: !!fav.antimicrobiano, controlado: !!fav.controlado }); desenharRx(); agendarSalvar(); }
-        if (!it.antimicrobiano && temTermo(it.nome, ANTIMICROBIANOS)) { it.antimicrobiano = true; desenharRx(); agendarSalvar(); toast(`${it.nome}: marcado como antimicrobiano (receita em 2 vias). Desmarque se não for.`); }
-        if (!it.controlado && temTermo(it.nome, CONTROLADOS)) { it.controlado = true; desenharRx(); agendarSalvar(); toast(`${it.nome}: sujeito a controle especial — fica fora deste receituário.`); }
-      }
+    f.addEventListener('cid-escolhido', e => {
+      if (e.target.id !== 'r-cid') return;
+      C.registro.cid = e.detail.codigo; C.registro.cid_desc = e.detail.descricao;
+      const h = $('#r-hipotese'); if (h && !h.value.trim()) { h.value = e.detail.descricao; C.registro.hipotese = e.detail.descricao; }
+      agendarSalvar(); marcarSecoes();
     });
     f.addEventListener('click', async e => {
-      const b = e.target.closest('[data-x]'); if (!b) return;
+      const b = e.target.closest('[data-x]'); if (!b || b.closest('#doc-editor')) return;
       const x = b.dataset.x;
-      if (x === 'rx-add') { C.prescricao.push({ nome: '', apresentacao: '', via: 'Oral', quantidade: '', posologia: '', antimicrobiano: false, controlado: false }); desenharRx(true); agendarSalvar(); }
-      else if (x === 'rx-del') { C.prescricao.splice(+b.dataset.i, 1); desenharRx(); agendarSalvar(); marcarSecoes(); }
-      else if (x === 'rx-up' || x === 'rx-down') { const i = +b.dataset.i, j = x === 'rx-up' ? i - 1 : i + 1; if (j < 0 || j >= C.prescricao.length) return; [C.prescricao[i], C.prescricao[j]] = [C.prescricao[j], C.prescricao[i]]; desenharRx(); agendarSalvar(); $(`[data-x="${x}"][data-i="${j}"]`)?.focus(); }
-      else if (x === 'rx-star') salvarFavorito(C.prescricao[+b.dataset.i], b);
-      else if (x === 'rx-fav') escolherFavorito();
-      else if (x === 'ex-add') { C.exames.push({ nome: '' }); desenharEx(true); agendarSalvar(); }
-      else if (x === 'ex-del') { C.exames.splice(+b.dataset.i, 1); desenharEx(); agendarSalvar(); marcarSecoes(); }
-      else if (x === 'pdf-rx') { await salvarPendente(); gerarReceita(); }
-      else if (x === 'pdf-ex') { await salvarPendente(); gerarExames(); }
-      else if (x === 'pdf-at') { await salvarPendente(); gerarAtestado(); }
-      else if (x === 'usar-modelo') usarModeloNaConsulta(b.dataset.tipo);
-      else if (x === 'salvar-modelo') salvarComoModelo(b.dataset.tipo);
+      if (x === 'doc-novo') {
+        const atual = C.registro.doc_rascunho;
+        if (docTemConteudo(atual) && !(await confirmar(`Há ${NOME_DOC[atual.tipo].toLowerCase()} em edição que ainda não foi emitida. Descartar e começar ${NOME_DOC[b.dataset.tipo].toLowerCase()}?`, { ok: 'Descartar e começar', perigo: true, titulo: 'Documento em edição' }))) return;
+        C.registro.doc_rascunho = estadoNovo(b.dataset.tipo, C.clinica_id); agendarSalvar(); abrirEditorConsulta(true);
+      }
+      else if (x === 'ir-docs') { const d = $('#s-docs'); d.open = true; d.scrollIntoView({ block: 'start' }); }
       else if (x === 'ficha') dialogoPaciente(CP, novo => { CP = novo; $('#resumo-ficha').outerHTML = resumoFicha(); });
       else if (x === 'finalizar') finalizar(b);
       else if (x === 'excluir') {
-        if (!(await confirmar('Excluir este rascunho de consulta? Esta ação não pode ser desfeita.', { ok: 'Excluir rascunho', perigo: true, titulo: 'Excluir rascunho' }))) return;
+        if (!(await confirmar(`Excluir este rascunho de consulta? Esta ação não pode ser desfeita.${DOCS_CONSULTA.length ? ' Os documentos já emitidos continuam guardados na ficha da paciente.' : ''}`, { ok: 'Excluir rascunho', perigo: true, titulo: 'Excluir rascunho' }))) return;
         try { clearTimeout(salvarTimer); sujo = false; await DB.consultas.remove(C.id); toast('Rascunho excluído.'); location.hash = '#paciente-' + C.paciente_id; } catch (err) { falha(err); }
       }
     });
     $$('.secnav a', main).forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); const d = document.getElementById(a.dataset.sec); d.open = true; d.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); d.querySelector('summary').focus({ preventScroll: true }); }));
+  }
+
+  function desenharDocsConsulta() {
+    const box = $('#docs-lista'); if (!box) return;
+    const validos = DOCS_CONSULTA.filter(d => !d.anulado_em);
+    box.innerHTML = DOCS_CONSULTA.length ? `<ul class="list">${DOCS_CONSULTA.map(docLinhaHTML).join('')}</ul>${validos.length ? `<div class="actions" style="margin-top:12px"><button type="button" class="btn btn-ghost" data-enviar-todos>${ICON.share}Enviar ${validos.length > 1 ? `os ${validos.length} documentos` : 'o documento'} para a paciente</button></div>` : ''}` : `<p class="muted small">Nenhum documento emitido nesta consulta ainda.</p>`;
+    const et = box.querySelector('[data-enviar-todos]'); if (et) et.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); dialogoEnviar(CP, DOCS_CONSULTA); });
+    ligarLinhasDoc(box, () => DB.documentos.list({ consultaId: C.id }).then(l => { DOCS_CONSULTA = l; desenharDocsConsulta(); }));
+  }
+  function abrirEditorConsulta(focar) {
+    const box = $('#doc-editor'); if (!box) return;
+    const E = C.registro.doc_rascunho;
+    if (!E) { box.innerHTML = ''; return; }
+    if (!E.clinica_id) E.clinica_id = C.clinica_id;
+    editorDocumento(box, E, {
+      paciente: CP, consultaId: C.id, data: C.data,
+      mudou: () => { agendarSalvar(); marcarSecoes(); },
+      emitido: async doc => { DOCS_CONSULTA.unshift(doc); delete C.registro.doc_rascunho; agendarSalvar(); await salvarPendente(); desenharDocsConsulta(); box.innerHTML = ''; marcarSecoes(); },
+      descartar: () => { delete C.registro.doc_rascunho; agendarSalvar(); box.innerHTML = ''; marcarSecoes(); }
+    });
+    if (focar) box.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
   function calcIMC() {
@@ -763,82 +780,314 @@
   }
   function marcarSecoes() { $$('.secnav a').forEach(a => { const s = SECOES.find(x => x[0] === a.dataset.sec); a.classList.toggle('filled', !!s[2](C.registro, C)); }); }
 
-  function desenharRx(focarUltimo) {
-    const ol = $('#rx-list'); if (!ol) return;
-    if (!C.prescricao.length) { ol.innerHTML = `<li class="muted small" style="padding:8px 0">Nenhum medicamento ainda. Adicione abaixo ou use um favorito.</li>`; return; }
-    ol.innerHTML = rxItensHTML(C.prescricao, true);
-    $$('[data-k="antimicrobiano"], [data-k="controlado"]', ol).forEach(c => c.addEventListener('change', () => setTimeout(desenharRx, 0)));
-    if (focarUltimo) $(`#rx-n-${C.prescricao.length - 1}`).focus();
+  /* =====================================================================
+     Documentos: editor, emissão, arquivo da paciente
+     ===================================================================== */
+  const TIPOS_DOC = [['receita', 'Receita'], ['exames', 'Solicitação de exames'], ['atestado', 'Atestado'], ['orientacoes', 'Orientações']];
+  const NOME_DOC = { receita: 'Receita', exames: 'Solicitação de exames', atestado: 'Atestado', orientacoes: 'Orientações', registro: 'Registro da consulta' };
+  function estadoNovo(tipo, clinicaId) {
+    const base = { tipo, clinica_id: clinicaId || '' };
+    if (tipo === 'receita') return { ...base, itens: [], orientacoes: '', incluir_orientacoes: true };
+    if (tipo === 'exames') return { ...base, exames: [{ nome: '' }], indicacao: '' };
+    if (tipo === 'atestado') return { ...base, titulo: 'Atestado médico', texto: '', cid: '', cid_desc: '', cid_aut: false };
+    return { ...base, texto: '' };
   }
-  function rxItensHTML(lista, estrela) {
-    return lista.map((it, i) => `<li class="rx">
-      <div class="rx-top"><span class="n" aria-hidden="true">${i + 1}.</span><span class="flags">${it.antimicrobiano ? '<span class="chip copper">Antimicrobiano · 2 vias</span>' : ''}${it.controlado ? '<span class="chip danger">Controle especial</span>' : ''}</span>
-        <button type="button" class="icon-btn" data-x="rx-up" data-i="${i}" aria-label="Mover medicamento ${i + 1} para cima" ${i === 0 ? 'disabled' : ''}>${ICON.down.replace('<svg', '<svg style="transform:rotate(180deg)"')}</button>
-        <button type="button" class="icon-btn" data-x="rx-down" data-i="${i}" aria-label="Mover medicamento ${i + 1} para baixo" ${i === lista.length - 1 ? 'disabled' : ''}>${ICON.down}</button>
-        ${estrela ? `<button type="button" class="icon-btn" data-x="rx-star" data-i="${i}" aria-label="Salvar medicamento ${i + 1} nos favoritos">${ICON.star}</button>` : ''}
-        <button type="button" class="icon-btn" data-x="rx-del" data-i="${i}" aria-label="Remover medicamento ${i + 1}">${ICON.trash}</button></div>
-      <div class="rx-grid">
-        ${campo('Medicamento', `<input id="rx-n-${i}" data-rx="${i}" data-k="nome" value="${esc(it.nome)}" list="fav-list" placeholder="Nome (DCB ou comercial)">`)}
-        ${campo('Concentração / forma', `<input id="rx-a-${i}" data-rx="${i}" data-k="apresentacao" value="${esc(it.apresentacao)}" placeholder="Ex.: 500 mg comprimido">`)}
-        ${campo('Via', `<select id="rx-v-${i}" data-rx="${i}" data-k="via">${[...new Set([...VIAS, it.via || 'Oral'])].map(vv => `<option ${vv === (it.via || 'Oral') ? 'selected' : ''}>${esc(vv)}</option>`).join('')}</select>`)}
-        ${campo('Quantidade', `<input id="rx-q-${i}" data-rx="${i}" data-k="quantidade" value="${esc(it.quantidade)}" placeholder="Ex.: 1 caixa">`)}
-        <div class="full">${campo('Posologia', `<textarea id="rx-p-${i}" data-rx="${i}" data-k="posologia" rows="2" placeholder="Ex.: Tomar 1 comprimido de 12 em 12 horas por 7 dias.">${esc(it.posologia)}</textarea>`)}</div>
-        <div class="full checks"><label class="check small"><input type="checkbox" data-rx="${i}" data-k="antimicrobiano" ${it.antimicrobiano ? 'checked' : ''}> Antimicrobiano (receita em 2 vias)</label><label class="check small"><input type="checkbox" data-rx="${i}" data-k="controlado" ${it.controlado ? 'checked' : ''}> Controle especial (Portaria 344)</label></div>
-      </div></li>`).join('');
-  }
-  function desenharEx(focar) {
-    const ul = $('#ex-list'); if (!ul) return;
-    ul.innerHTML = C.exames.length ? C.exames.map((e, i) => `<li><label class="sr-only" for="ex-${i}">Exame ${i + 1}</label><input id="ex-${i}" data-ex="${i}" value="${esc(e.nome)}" placeholder="Ex.: Hemograma completo"><button type="button" class="icon-btn" data-x="ex-del" data-i="${i}" aria-label="Remover exame ${i + 1}">${ICON.trash}</button></li>`).join('') : `<li class="muted small">Nenhum exame solicitado.</li>`;
-    if (focar) $(`#ex-${C.exames.length - 1}`).focus();
+  const docTemConteudo = E => !!(E && ((E.itens || []).some(i => (i.nome || '').trim()) || (E.exames || []).some(x => (x.nome || '').trim()) || (E.texto || '').trim() || (E.orientacoes || '').trim()));
+  const copiaItem = i => ({ nome: i.nome || '', apresentacao: i.apresentacao || '', via: i.via || 'Oral', quantidade: i.quantidade || '', posologia: i.posologia || '', antimicrobiano: !!i.antimicrobiano, controlado: !!i.controlado });
+
+  // Painel "Meus medicamentos": toque para adicionar
+  const medsPainelHTML = pref => `<div class="meds">
+      <div class="meds-head"><p class="label">Meus medicamentos — toque para adicionar</p><button type="button" class="btn btn-quiet" data-med-novo>${ICON.plus}Cadastrar medicamento</button></div>
+      <div class="search"><label class="sr-only" for="${pref}-mq">Buscar nos meus medicamentos</label>${ICON.search}<input id="${pref}-mq" data-medq type="search" placeholder="Buscar nos meus medicamentos" autocomplete="off"></div>
+      <div class="med-chips" data-lista="meds"></div></div>`;
+  function desenharMeds(painel) {
+    const lista = painel.querySelector('[data-lista="meds"]'); const q = norm(painel.querySelector('[data-medq]').value).trim();
+    const m = S.favoritos.filter(f => !q || norm(f.nome + ' ' + f.apresentacao).includes(q)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    lista.innerHTML = !S.favoritos.length ? `<p class="muted small">Você ainda não cadastrou medicamentos. Toque em “Cadastrar medicamento” — ou, numa receita, na estrela de um item para guardá-lo.</p>`
+      : m.length ? m.slice(0, 40).map(f => `<button type="button" class="med-chip" data-med="${esc(f.id)}"><span class="med-n">${esc(f.nome)}</span><span class="med-a">${esc([f.apresentacao, f.via].filter(Boolean).join(' · '))}</span>${ICON.plus}</button>`).join('') + (m.length > 40 ? `<p class="muted small">Mostrando 40 de ${m.length}. Refine a busca.</p>` : '')
+      : `<p class="muted small">Nenhum medicamento encontrado.</p>`;
   }
 
-  async function salvarFavorito(it, btn) {
-    if (!it || !it.nome.trim()) return toast('Preencha o nome do medicamento antes de favoritar.', true);
-    if (S.favoritos.some(f => norm(f.nome) === norm(it.nome) && norm(f.apresentacao) === norm(it.apresentacao))) return toast('Este medicamento já está nos favoritos.');
-    await ocupado(btn, async () => {
-      try { const f = await DB.favoritos.save({ nome: it.nome.trim(), apresentacao: it.apresentacao || '', via: it.via || 'Oral', quantidade: it.quantidade || '', posologia: it.posologia || '', antimicrobiano: !!it.antimicrobiano, controlado: !!it.controlado }); S.favoritos.push(f); toast(`${it.nome} salvo nos favoritos.`); }
-      catch (err) { falha(err); }
+  // Editor de um documento. E = estado (editado no lugar); ctx = { paciente, consultaId, data, mudou(), emitido(doc), descartar(), escolherClinica }
+  function editorDocumento(box, E, ctx) {
+    const pref = 'ed' + Math.random().toString(36).slice(2, 7);
+    const titulos = { receita: 'Nova receita', exames: 'Nova solicitação de exames', atestado: 'Novo atestado', orientacoes: 'Novas orientações' };
+    const selClin = ctx.escolherClinica ? campo('Clínica (sai no cabeçalho)', `<select id="${pref}-cl" data-e="clinica_id">${S.clinicas.filter(c => c.ativa !== false || c.id === E.clinica_id).map(c => `<option value="${esc(c.id)}" ${c.id === E.clinica_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>`) : '';
+    let corpo = '';
+    if (E.tipo === 'receita') corpo = `
+      <div class="actions"><button type="button" class="btn btn-ghost" data-ed="usar-modelo">${ICON.layers}Usar receita padrão</button><button type="button" class="btn btn-quiet" data-ed="salvar-modelo">Salvar como receita padrão</button></div>
+      ${medsPainelHTML(pref)}
+      <p class="label">Medicamentos desta receita</p>
+      <ol class="rx-list" data-lista="rx"></ol>
+      <div class="actions"><button type="button" class="btn btn-quiet" data-ed="rx-add">${ICON.plus}Adicionar medicamento em branco</button></div>
+      ${areaTexto(pref + '-or', '', E.orientacoes, { rot: 'Orientações (saem na receita)', linhas: 3, campo: 'orientacoes', attrs: 'data-e="orientacoes"', ph: 'Uma orientação por linha. Comece com “-” para virar tópico.' })}
+      <label class="check"><input type="checkbox" data-e="incluir_orientacoes" ${E.incluir_orientacoes !== false ? 'checked' : ''}> Incluir as orientações na receita</label>`;
+    else if (E.tipo === 'exames') corpo = `
+      <div class="actions"><button type="button" class="btn btn-ghost" data-ed="usar-modelo">${ICON.layers}Usar pacote de exames</button><button type="button" class="btn btn-quiet" data-ed="salvar-modelo">Salvar como pacote</button></div>
+      <p class="label">Exames</p>
+      <ul class="ex-list" data-lista="ex"></ul>
+      <div class="actions"><button type="button" class="btn btn-quiet" data-ed="ex-add">${ICON.plus}Adicionar exame</button></div>
+      ${areaTexto(pref + '-ind', '', E.indicacao, { rot: 'Indicação clínica', linhas: 2, campo: 'indicacao_exames', attrs: 'data-e="indicacao"' })}`;
+    else if (E.tipo === 'atestado') corpo = `
+      <div class="actions"><button type="button" class="btn btn-ghost" data-ed="usar-modelo">${ICON.layers}Usar modelo de atestado</button><button type="button" class="btn btn-quiet" data-ed="salvar-modelo">Salvar como modelo</button></div>
+      ${campo('Título do documento', `<input id="${pref}-tit" data-e="titulo" value="${esc(E.titulo)}">`)}
+      ${areaTexto(pref + '-tx', '', E.texto, { rot: 'Texto do atestado', linhas: 6, padrao: false, attrs: 'data-e="texto"', ph: 'Escolha um modelo ou escreva o texto.' })}
+      ${cidCampo(pref + '-cid', E.cid, { rot: 'CID-10 (opcional)', attrs: 'data-e="cid"', desc: E.cid_desc })}
+      <label class="check"><input type="checkbox" data-e="cid_aut" ${E.cid_aut ? 'checked' : ''}> A paciente autorizou constar o CID no atestado</label>
+      <p class="small muted">O CID só sai no atestado com a autorização expressa da paciente (Resolução CFM 2.381/2024).</p>`;
+    else corpo = areaTexto(pref + '-tx', '', E.texto, { rot: 'Orientações à paciente', linhas: 8, campo: 'orientacoes', attrs: 'data-e="texto"', ph: 'Uma orientação por linha. Comece com “-” para virar tópico.' });
+    box.innerHTML = `<section class="doc-editor" aria-label="${esc(titulos[E.tipo])}">
+        <div class="doc-editor-head"><h3>${esc(titulos[E.tipo])}</h3><button type="button" class="btn btn-quiet" data-ed="descartar">Descartar</button></div>
+        <div class="stack">${selClin}${corpo}</div>
+        <div class="actions doc-acoes"><button type="button" class="btn btn-ghost" data-ed="previa">${ICON.open}Pré-visualizar</button><button type="button" class="btn btn-primary" data-ed="emitir">${ICON.check}Salvar e gerar PDF</button></div>
+      </section>`;
+    const sec = box.querySelector('.doc-editor');
+    const drawRx = foco => { const ol = sec.querySelector('[data-lista="rx"]'); if (!ol) return; ol.innerHTML = E.itens.length ? rxItensHTML(E.itens, true, pref) : `<li class="muted small">Toque num medicamento acima para adicioná-lo, ou use uma receita padrão.</li>`; if (foco) sec.querySelector(`#${pref}-n-${E.itens.length - 1}`)?.focus(); };
+    const drawEx = foco => { const ul = sec.querySelector('[data-lista="ex"]'); if (!ul) return; ul.innerHTML = E.exames.length ? E.exames.map((x, i) => `<li><label class="sr-only" for="${pref}-ex-${i}">Exame ${i + 1}</label><input id="${pref}-ex-${i}" data-ex="${i}" value="${esc(x.nome)}" placeholder="Ex.: Hemograma completo"><button type="button" class="icon-btn" data-x="ex-del" data-i="${i}" aria-label="Remover exame ${i + 1}">${ICON.trash}</button></li>`).join('') : `<li class="muted small">Nenhum exame ainda.</li>`; if (foco) sec.querySelector(`#${pref}-ex-${E.exames.length - 1}`)?.focus(); };
+    const meds = sec.querySelector('.meds');
+    drawRx(); drawEx(); if (meds) desenharMeds(meds);
+    const mudou = () => ctx.mudou && ctx.mudou();
+
+    sec.addEventListener('input', e => {
+      const el = e.target;
+      if (el.matches('[data-medq]')) return desenharMeds(meds);
+      if (el.dataset.rx != null) { const it = E.itens[+el.dataset.rx]; if (el.type === 'checkbox') { it[el.dataset.k] = el.checked; drawRx(); } else it[el.dataset.k] = el.value; }
+      else if (el.dataset.ex != null) E.exames[+el.dataset.ex].nome = el.value;
+      else if (el.dataset.e) { E[el.dataset.e] = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.e === 'cid' && !el.value) E.cid_desc = ''; }
+      else return;
+      mudou();
+    });
+    sec.addEventListener('cid-escolhido', e => { E.cid = e.detail.codigo; E.cid_desc = e.detail.descricao; mudou(); });
+    sec.addEventListener('change', e => {
+      const el = e.target; if (el.dataset.rx == null || el.dataset.k !== 'nome') return;
+      const it = E.itens[+el.dataset.rx];
+      const fav = S.favoritos.find(x => norm(x.nome) === norm(it.nome));
+      let msg = '';
+      if (fav && !it.posologia && !it.apresentacao) Object.assign(it, copiaItem(fav));
+      if (!it.antimicrobiano && temTermo(it.nome, ANTIMICROBIANOS)) { it.antimicrobiano = true; msg = `${it.nome}: marcado como antimicrobiano (receita em 2 vias). Desmarque se não for.`; }
+      if (!it.controlado && temTermo(it.nome, CONTROLADOS)) { it.controlado = true; msg = `${it.nome}: sujeito a controle especial — fica fora desta receita.`; }
+      drawRx(); mudou(); if (msg) toast(msg);
+    });
+    sec.addEventListener('click', async e => {
+      const med = e.target.closest('[data-med]');
+      if (med) { const f = S.favoritos.find(x => x.id === med.dataset.med); if (f) { E.itens.push(copiaItem(f)); drawRx(); mudou(); toast(`${f.nome} adicionado à receita.`); } return; }
+      if (e.target.closest('[data-med-novo]')) { dialogoMedicamento(null, () => desenharMeds(meds)); return; }
+      const b = e.target.closest('[data-ed], [data-x]'); if (!b) return;
+      const x = b.dataset.ed || b.dataset.x; const i = +b.dataset.i;
+      if (x === 'rx-add') { E.itens.push(copiaItem({})); drawRx(true); mudou(); }
+      else if (x === 'rx-del') { E.itens.splice(i, 1); drawRx(); mudou(); }
+      else if (x === 'rx-up' || x === 'rx-down') { const j = x === 'rx-up' ? i - 1 : i + 1; if (j < 0 || j >= E.itens.length) return; [E.itens[i], E.itens[j]] = [E.itens[j], E.itens[i]]; drawRx(); mudou(); }
+      else if (x === 'rx-star') salvarComoMedicamento(E.itens[i], b, () => meds && desenharMeds(meds));
+      else if (x === 'ex-add') { E.exames.push({ nome: '' }); drawEx(true); mudou(); }
+      else if (x === 'ex-del') { E.exames.splice(i, 1); drawEx(); mudou(); }
+      else if (x === 'usar-modelo') { if (await usarModeloNoEditor(E, ctx)) { const ta = sec.querySelector('[data-e="orientacoes"]'); if (ta) ta.value = E.orientacoes; const ti = sec.querySelector('[data-e="indicacao"]'); if (ti) ti.value = E.indicacao; const tx = sec.querySelector('[data-e="texto"]'); if (tx) tx.value = E.texto; const tt = sec.querySelector('[data-e="titulo"]'); if (tt) tt.value = E.titulo; drawRx(); drawEx(); mudou(); } }
+      else if (x === 'salvar-modelo') salvarEditorComoModelo(E);
+      else if (x === 'previa') { const err = validarDoc(E); if (err) return toast(err, true); try { const r = PDF.gerar(montarDadosPDF(E, ctx.paciente)); mostrarPDF(r, 'Pré-visualização (ainda não salvo)', true); } catch (er) { falha(er); } }
+      else if (x === 'emitir') await ocupado(b, () => emitirDocumento(E, ctx));
+      else if (x === 'descartar') { if (docTemConteudo(E) && !(await confirmar('Descartar este documento? O que foi preenchido será perdido.', { ok: 'Descartar', perigo: true, titulo: 'Descartar documento' }))) return; ctx.descartar && ctx.descartar(); }
     });
   }
-  function escolherFavorito() {
+
+  function validarDoc(E) {
+    if (!E.clinica_id) return 'Escolha a clínica do documento.';
+    if (E.tipo === 'receita' && !E.itens.some(i => (i.nome || '').trim()) && !(E.orientacoes || '').trim()) return 'Adicione ao menos um medicamento ou orientação.';
+    if (E.tipo === 'receita' && E.itens.some(i => (i.nome || '').trim()) && E.itens.filter(i => (i.nome || '').trim()).every(i => i.controlado) && !(E.orientacoes || '').trim()) return 'Medicamentos de controle especial não saem nesta receita (modelo oficial da Anvisa).';
+    if (E.tipo === 'exames' && !E.exames.some(x => (x.nome || '').trim())) return 'Adicione ao menos um exame.';
+    if ((E.tipo === 'atestado' || E.tipo === 'orientacoes') && !(E.texto || '').trim()) return 'Escreva o texto do documento.';
+    const pend = String(E.texto || '').match(/\{[^{}]+\}/g);
+    if (E.tipo === 'atestado' && pend) return `Complete os campos do texto: ${[...new Set(pend)].join(', ')}.`;
+    return '';
+  }
+  const pick = (o, ks) => Object.fromEntries(ks.map(k => [k, (o || {})[k] ?? '']));
+  function montarDadosPDF(E, paciente) {
+    const cl = clinicaPorId(E.clinica_id) || {};
+    const base = {
+      medico: pick(S.perfil, ['tratamento', 'nome', 'especialidade', 'crm', 'crm_uf', 'rqe', 'telefone', 'email']),
+      clinica: pick(cl, ['nome', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email']),
+      paciente: pick(paciente, ['nome', 'nome_social', 'data_nascimento', 'sexo', 'cpf']),
+      data: new Date().toISOString(), tamanho: S.perfil.pdf_tamanho || 'A4', marcaDagua: S.perfil.pdf_marca_dagua !== false
+    };
+    if (E.tipo === 'receita') return { ...base, tipo: 'receita', itens: E.itens.filter(i => (i.nome || '').trim()).map(copiaItem), orientacoes: E.orientacoes || '', incluirOrientacoes: E.incluir_orientacoes !== false };
+    if (E.tipo === 'exames') return { ...base, tipo: 'exames', exames: E.exames.filter(x => (x.nome || '').trim()).map(x => ({ nome: x.nome.trim() })), indicacao: E.indicacao || '' };
+    if (E.tipo === 'atestado') return { ...base, tipo: 'atestado', titulo: E.titulo || 'Atestado médico', texto: E.texto, cid: E.cid_aut ? (E.cid || '') : '', rotuloArquivo: E.titulo || 'Atestado' };
+    return { ...base, tipo: 'orientacoes', orientacoes: E.texto };
+  }
+  function resumoDoc(dados) {
+    if (dados.tipo === 'receita') { const n = (dados.itens || []).filter(i => !i.controlado).map(i => [i.nome, i.apresentacao].filter(Boolean).join(' ')); return n.length ? n.join(' · ') : 'Orientações'; }
+    if (dados.tipo === 'exames') return (dados.exames || []).map(x => x.nome).join(' · ');
+    if (dados.tipo === 'registro') return dados.subtitulo || '';
+    const t = String(dados.texto || dados.orientacoes || ''); return t.length > 160 ? t.slice(0, 160) + '…' : t;
+  }
+  function tituloDoc(dados) { return dados.tipo === 'atestado' ? (dados.titulo || 'Atestado médico') : NOME_DOC[dados.tipo]; }
+
+  async function emitirDocumento(E, ctx) {
+    const err = validarDoc(E); if (err) { toast(err, true); return; }
+    if (E.tipo === 'atestado' && E.cid && !E.cid_aut) toast('CID omitido: marque a autorização da paciente para que ele saia no atestado.');
+    const dados = montarDadosPDF(E, ctx.paciente);
+    return emitirDados(dados, { pacienteId: ctx.paciente.id, consultaId: ctx.consultaId, clinicaId: E.clinica_id, paciente: ctx.paciente, aoEmitir: ctx.emitido });
+  }
+  async function emitirDados(dados, { pacienteId, consultaId, clinicaId, paciente, aoEmitir }) {
+    let r; try { r = PDF.gerar(dados); } catch (er) { falha(er); return; }
+    try {
+      const doc = await DB.documentos.salvar({ paciente_id: pacienteId, consulta_id: consultaId || null, clinica_id: clinicaId || null, tipo: dados.tipo, titulo: tituloDoc(dados), nome_arquivo: r.nomeArquivo, emitido_em: dados.data, dados, resumo: resumoDoc(dados), paginas: r.paginas }, r.blob);
+      aoEmitir && await aoEmitir(doc);
+      mostrarDocumento(doc, r.blob, { novo: true, avisos: r.avisos, paciente });
+      return doc;
+    } catch (er) { falha(er); }
+  }
+
+  async function abrirDocumento(row, depois) {
+    try {
+      const doc = row.dados ? row : await DB.documentos.get(row.id);
+      let blob = await DB.documentos.pdf(doc);
+      if (!blob) blob = PDF.gerar(doc.dados).blob;
+      mostrarDocumento(doc, blob, { depois });
+    } catch (er) { falha(er); }
+  }
+
+  function imprimirPDF(url) {
+    const ua = navigator.userAgent;
+    const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const safari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(ua);
+    if (downloadsCap) { toast('Na demonstração, baixe o PDF para imprimir.'); return; }
+    if (ios || safari) { const w = window.open(url, '_blank'); toast(w ? 'PDF aberto — use o botão de imprimir ou compartilhar do visualizador.' : 'Permita pop-ups para abrir o PDF.'); return; }
+    const fr = document.createElement('iframe');
+    fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+    fr.src = url; document.body.appendChild(fr);
+    fr.onload = () => setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { window.open(url, '_blank'); } }, 300);
+    setTimeout(() => fr.remove(), 120000);
+  }
+
+  function mostrarDocumento(doc, blob, { novo, avisos = [], depois, paciente } = {}) {
+    const url = URL.createObjectURL(blob);
+    const file = typeof File === 'function' ? new File([blob], doc.nome_arquivo, { type: 'application/pdf' }) : null;
+    const podeCompartilhar = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    const previa = !matchMedia('(pointer: coarse)').matches && innerWidth >= 900 && !downloadsCap;
+    const quando = `${fmtData(doc.emitido_em)} às ${fmtHora(doc.emitido_em)}`;
+    const nomePac = paciente ? paciente.nome : ((doc.dados || {}).paciente || {}).nome || '';
     abrirDialogo({
-      titulo: 'Medicamentos favoritos',
-      corpo: `<div class="search" style="margin-bottom:12px">${ICON.search}<label class="sr-only" for="fv-q">Filtrar favoritos</label><input id="fv-q" type="search" placeholder="Filtrar" autocomplete="off"></div><ul class="list" id="fv-l"></ul>`,
+      titulo: novo ? 'Documento salvo' : doc.titulo, largo: previa,
+      corpo: `<div class="stack">
+        ${novo ? `<div class="alert info">${ICON.check}<p><b>${esc(doc.titulo)}</b> salvo nos documentos de ${esc(nomePac)} em ${quando}. Você pode abrir, imprimir ou reenviar quando quiser pela ficha da paciente.</p></div>` : ''}
+        ${doc.anulado_em ? `<div class="alert danger">${ICON.alert}<p><b>Documento anulado</b> em ${fmtData(doc.anulado_em)} ${fmtHora(doc.anulado_em)}${doc.motivo_anulacao ? ` — ${esc(doc.motivo_anulacao)}` : ''}.</p></div>` : ''}
+        ${avisos.map(a => `<div class="alert">${ICON.alert}<p>${esc(a)}</p></div>`).join('')}
+        ${previa ? `<iframe class="pdf-frame" src="${url}" title="Visualização do PDF"></iframe>` : `<div class="summary-card"><b class="wrap-any">${esc(doc.nome_arquivo)}</b><p class="muted small">${doc.paginas || ''} ${doc.paginas === 1 ? 'página' : 'páginas'} · emitido em ${quando}</p></div>`}
+        <p class="small muted">Imprima e assine, ou assine digitalmente com certificado ICP-Brasil antes de enviar.</p>
+        ${!novo && !doc.anulado_em ? `<p><button type="button" class="btn btn-quiet small" data-anular style="padding-left:0;color:var(--danger)">Anular este documento</button></p>` : ''}</div>`,
+      rodape: `${podeCompartilhar ? `<button class="btn btn-ghost" data-share>${ICON.share}Compartilhar</button>` : ''}
+        ${downloadsCap ? `<button class="btn btn-ghost" data-save>${ICON.download}Baixar</button>` : `<a class="btn btn-ghost" href="${url}" download="${esc(doc.nome_arquivo)}">${ICON.download}Baixar</a><a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">${ICON.open}Visualizar</a>`}
+        ${!doc.anulado_em ? `<button class="btn btn-ghost" data-enviar>${ICON.share}Enviar à paciente</button>` : ''}
+        <button class="btn btn-primary" data-print>${ICON.doc}Imprimir</button>`,
       aoAbrir: (d, fechar) => {
-        const q = d.querySelector('#fv-q'), l = d.querySelector('#fv-l');
-        const draw = () => { const t = norm(q.value); const m = S.favoritos.filter(f => !t || norm(f.nome).includes(t)); l.innerHTML = m.length ? m.map(f => `<li><button type="button" class="row" data-id="${esc(f.id)}"><span class="grow"><span class="title">${esc(f.nome)} ${esc(f.apresentacao)}</span><span class="meta"><span>${esc(f.via)}</span><span>${esc(f.quantidade)}</span></span>${f.posologia ? `<span class="small muted">${esc(f.posologia)}</span>` : ''}</span>${ICON.plus.replace('<svg', '<svg class="chev"')}</button></li>`).join('') : '<li class="muted">Nenhum favorito encontrado.</li>'; $$('[data-id]', l).forEach(b => b.addEventListener('click', () => { const f = S.favoritos.find(x => x.id === b.dataset.id); C.prescricao.push({ nome: f.nome, apresentacao: f.apresentacao, via: f.via, quantidade: f.quantidade, posologia: f.posologia, antimicrobiano: !!f.antimicrobiano, controlado: !!f.controlado }); desenharRx(); agendarSalvar(); marcarSecoes(); toast(`${f.nome} adicionado.`); fechar(); })); };
-        q.addEventListener('input', draw); draw();
+        d.querySelector('[data-print]').addEventListener('click', () => imprimirPDF(url));
+        const sh = d.querySelector('[data-share]'); if (sh) sh.addEventListener('click', () => navigator.share({ files: [file], title: doc.nome_arquivo }).catch(() => {}));
+        const sv = d.querySelector('[data-save]'); if (sv) sv.addEventListener('click', () => ocupado(sv, async () => { try { await downloadsCap.save({ filename: doc.nome_arquivo, data: blob }); } catch (e) { toast('O download foi cancelado ou bloqueado.', true); } }));
+        const an = d.querySelector('[data-anular]');
+        if (an) an.addEventListener('click', () => { fechar(); dialogoAnular(doc, depois); });
+        const en = d.querySelector('[data-enviar]');
+        if (en) en.addEventListener('click', async () => { const pac = paciente || await DB.pacientes.get(doc.paciente_id); fechar(); dialogoEnviar(pac, [doc]); });
+      },
+      aoFechar: () => setTimeout(() => URL.revokeObjectURL(url), 120000)
+    });
+  }
+  function dialogoAnular(doc, depois) {
+    abrirDialogo({
+      titulo: 'Anular documento',
+      corpo: `<div class="stack"><p>O documento <b>${esc(doc.titulo)}</b> de ${fmtData(doc.emitido_em)} continuará no histórico, marcado como anulado. Esta ação não pode ser desfeita.</p>${campo('Motivo', `<input id="an-mot" placeholder="Ex.: emitido com erro de dose" autofocus>`)}</div>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-danger" data-ok>Anular documento</button>`,
+      aoAbrir: (d, fechar) => d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+        const m = d.querySelector('#an-mot'); if (!m.value.trim()) { erroCampo(m, 'Informe o motivo.'); m.focus(); return; }
+        try { await DB.documentos.anular(doc.id, m.value.trim()); toast('Documento anulado.'); fechar(); depois && depois(); } catch (err) { falha(err); }
+      }))
+    });
+  }
+
+  const ICONE_DOC = { receita: 'doc', exames: 'search', atestado: 'check', orientacoes: 'text', registro: 'layers' };
+  function docLinhaHTML(d) {
+    const cl = clinicaPorId(d.clinica_id);
+    return `<li><button type="button" class="row doc-row${d.anulado_em ? ' anulado' : ''}" data-doc="${esc(d.id)}"><span class="avatar" aria-hidden="true">${ICON[ICONE_DOC[d.tipo] || 'doc'].replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(d.titulo)}${d.anulado_em ? ' <span class="chip danger">Anulado</span>' : ''}</span><span class="meta"><span>${fmtData(d.emitido_em)} às ${fmtHora(d.emitido_em)}</span>${cl ? `<span>${esc(cl.nome)}</span>` : ''}</span>${d.resumo ? `<span class="small muted wrap-any">${esc(d.resumo.length > 140 ? d.resumo.slice(0, 140) + '…' : d.resumo)}</span>` : ''}<span class="small muted wrap-any">${esc(d.nome_arquivo)}</span></span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`;
+  }
+  function ligarLinhasDoc(box, recarregar) {
+    $$('[data-doc]', box).forEach(b => b.addEventListener('click', async () => {
+      const lista = await DB.documentos.list({ pacienteId: undefined });
+      const row = lista.find(x => x.id === b.dataset.doc) || { id: b.dataset.doc };
+      ocupado(b, () => abrirDocumento(row, recarregar));
+    }));
+  }
+
+  // Novo documento fora da consulta (ex.: pela ficha da paciente)
+  function dialogoNovoDocumento(paciente, { consultaId = null, tipo = null, depois } = {}) {
+    const clinicaPadrao = (paciente.clinicas || []).find(id => clinicaPorId(id)) || (S.clinicas.find(c => c.ativa !== false) || {}).id || '';
+    abrirDialogo({
+      titulo: `Novo documento · ${paciente.nome}`, largo: true,
+      corpo: `<div id="nd-tipos" class="actions doc-tipos" ${tipo ? 'hidden' : ''}>${TIPOS_DOC.map(([t, rot]) => `<button type="button" class="btn btn-ghost" data-nd="${t}">${ICON.plus}${rot}</button>`).join('')}</div><div id="nd-editor"></div>`,
+      aoAbrir: (d, fechar) => {
+        const abrir = t => {
+          d.querySelector('#nd-tipos').hidden = true;
+          const E = estadoNovo(t, clinicaPadrao);
+          editorDocumento(d.querySelector('#nd-editor'), E, { paciente, consultaId, escolherClinica: true, emitido: async doc => { fechar(); depois && depois(doc); }, descartar: () => fechar() });
+        };
+        $$('[data-nd]', d).forEach(b => b.addEventListener('click', () => abrir(b.dataset.nd)));
+        if (tipo) abrir(tipo);
       }
     });
   }
 
-  function gerarReceita() {
-    const cl = clinicaPorId(C.clinica_id);
-    gerarEmostrar({ ...dadosBasePDF(CP, cl, C.data), tipo: 'receita', itens: C.prescricao, orientacoes: C.orientacoes, incluirOrientacoes: C.registro.incluir_orientacoes !== false }, 'Receituário pronto');
+  /* ---------- campo de CID-10 com busca ---------- */
+  function cidCampo(id, valor, { rot = 'CID-10', attrs = '', desc = '' } = {}) {
+    return `<div class="field cid-campo"><label for="${id}" class="label">${rot}</label><div class="combo"><input id="${id}" ${attrs} data-cid value="${esc(valor || '')}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-lb" autocomplete="off" placeholder="Código ou nome (ex.: N76 ou vaginite)"><ul class="combo-lb" id="${id}-lb" role="listbox" aria-label="Resultados da CID-10" hidden></ul></div><p class="small muted cid-desc" id="${id}-desc" aria-live="polite">${esc(desc || '')}</p></div>`;
   }
-  function gerarExames() {
-    const cl = clinicaPorId(C.clinica_id);
-    gerarEmostrar({ ...dadosBasePDF(CP, cl, C.data), tipo: 'exames', exames: C.exames, indicacao: C.registro.indicacao_exames }, 'Solicitação de exames pronta');
-  }
-  function gerarAtestado() {
-    const r = C.registro;
-    if (r.atestado_cid && !r.atestado_cid_aut) toast('CID omitido: marque a autorização da paciente para que ele saia no atestado.');
-    gerarEmostrar({ ...dadosBasePDF(CP, clinicaPorId(C.clinica_id), C.data), tipo: 'atestado', titulo: r.atestado_titulo || 'Atestado médico', texto: r.atestado, cid: r.atestado_cid_aut ? r.atestado_cid : '' }, 'Atestado pronto');
-  }
+  (function ligarCid() {
+    let timer = null, seq = 0;
+    const fechar = inp => { const lb = document.getElementById(inp.getAttribute('aria-controls')); if (lb) { lb.hidden = true; lb.innerHTML = ''; } inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); };
+    const escolher = (inp, codigo, descricao) => {
+      inp.value = codigo; fechar(inp);
+      const d = document.getElementById(inp.id + '-desc'); if (d) d.textContent = descricao;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new CustomEvent('cid-escolhido', { bubbles: true, detail: { codigo, descricao } }));
+    };
+    document.addEventListener('input', e => {
+      const inp = e.target; if (!inp.matches || !inp.matches('[data-cid]') || !e.isTrusted) return;
+      const d = document.getElementById(inp.id + '-desc'); if (d) d.textContent = '';
+      clearTimeout(timer);
+      const termo = inp.value; if (termo.trim().length < 2) return fechar(inp);
+      timer = setTimeout(async () => {
+        const meu = ++seq; let res = [];
+        try { res = await DB.cid.buscar(termo); } catch (er) { return; }
+        if (meu !== seq) return;
+        const lb = document.getElementById(inp.getAttribute('aria-controls')); if (!lb) return;
+        lb.innerHTML = res.length ? res.map((c, i) => `<li role="option" id="${inp.id}-op${i}" data-codigo="${esc(c.codigo)}" data-desc="${esc(c.descricao)}" aria-selected="false"><b>${esc(c.codigo)}</b> <span>${esc(c.descricao)}</span></li>`).join('') : `<li class="vazio" aria-disabled="true">Nenhum código encontrado.</li>`;
+        lb.hidden = false; inp.setAttribute('aria-expanded', 'true');
+      }, 220);
+    });
+    document.addEventListener('keydown', e => {
+      const inp = e.target; if (!inp.matches || !inp.matches('[data-cid]')) return;
+      const lb = document.getElementById(inp.getAttribute('aria-controls')); if (!lb || lb.hidden) return;
+      const ops = $$('[role=option]', lb); if (!ops.length) return;
+      let i = ops.findIndex(o => o.getAttribute('aria-selected') === 'true');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); i = e.key === 'ArrowDown' ? Math.min(ops.length - 1, i + 1) : Math.max(0, i - 1); ops.forEach((o, k) => o.setAttribute('aria-selected', String(k === i))); inp.setAttribute('aria-activedescendant', ops[i].id); ops[i].scrollIntoView({ block: 'nearest' }); }
+      else if (e.key === 'Enter' && i >= 0) { e.preventDefault(); escolher(inp, ops[i].dataset.codigo, ops[i].dataset.desc); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(inp); }
+    }, true);
+    document.addEventListener('mousedown', e => { const op = e.target.closest('.combo-lb [role=option]'); if (op) { e.preventDefault(); const inp = document.querySelector(`[aria-controls="${op.parentElement.id}"]`); escolher(inp, op.dataset.codigo, op.dataset.desc); } });
+    document.addEventListener('click', e => { if (!e.target.closest('.combo')) $$('[data-cid][aria-expanded="true"]').forEach(fechar); });
+  })();
+
+  /* ---------- registro da consulta (prontuário) ---------- */
   function registroParaPDF() {
     const r = C.registro;
     const gpa = ['gestacoes', 'partos', 'cesareas', 'abortos'].some(k => r[k]) ? `G${r.gestacoes || 0} PN${r.partos || 0} C${r.cesareas || 0} A${r.abortos || 0}` : '';
+    const legado = (C.prescricao || []).filter(i => i.nome);
     return [
       { titulo: 'Atendimento', campos: [{ rotulo: 'Tipo', valor: C.tipo }, { rotulo: 'Clínica', valor: (clinicaPorId(C.clinica_id) || {}).nome }, { rotulo: 'Data', valor: `${fmtData(C.data)} às ${fmtHora(C.data)}` }] },
       { titulo: 'Queixa e história', campos: [{ rotulo: 'Queixa principal', valor: r.motivo }, { rotulo: 'História atual', valor: r.hda }] },
       { titulo: 'Ginecológico e obstétrico', campos: [{ rotulo: 'DUM', valor: r.dum ? fmtData(r.dum) : '' }, { rotulo: 'Ciclo', valor: r.ciclo }, { rotulo: 'Menarca', valor: r.menarca }, { rotulo: 'Paridade', valor: gpa }, { rotulo: 'Contracepção', valor: r.contracepcao }, { rotulo: 'Tentando engravidar', valor: r.tentante }, { rotulo: 'Último preventivo', valor: r.preventivo }, { rotulo: 'Mamografia/USG', valor: r.mamografia }, { rotulo: 'Outras', valor: r.gineco_obs }] },
       { titulo: 'Exame físico', campos: [{ rotulo: 'Sinais vitais', valor: [r.pa && `PA ${r.pa} mmHg`, r.fc && `FC ${r.fc} bpm`, r.peso && `Peso ${r.peso} kg`, r.altura && `Altura ${r.altura} m`].filter(Boolean).join(' · ') }, { rotulo: 'Geral e mamas', valor: r.exame_fisico }, { rotulo: 'Ginecológico', valor: r.exame_gineco }] },
       { titulo: 'Exames e resultados', campos: [{ rotulo: 'Resultados', valor: r.resultados }] },
-      { titulo: 'Avaliação e conduta', campos: [{ rotulo: 'Hipótese diagnóstica', valor: [r.hipotese, r.cid ? `(CID ${String(r.cid).toUpperCase()})` : ''].filter(Boolean).join(' ') }, { rotulo: 'Conduta', valor: r.conduta }, { rotulo: 'Retorno', valor: r.retorno }] },
-      { titulo: 'Prescrição', texto: C.prescricao.filter(i => i.nome).map((i, n) => `${n + 1}. ${[i.nome, i.apresentacao].filter(Boolean).join(' ')}${i.quantidade ? ` — ${i.quantidade}` : ''}${i.via ? ` (${i.via.toLowerCase()})` : ''}${i.posologia ? `: ${i.posologia}` : ''}`).join('\n') },
-      { titulo: 'Orientações', texto: C.orientacoes },
-      { titulo: 'Exames solicitados', texto: C.exames.filter(e => e.nome).map((e, n) => `${n + 1}. ${e.nome}`).join('\n') },
-      { titulo: 'Atestado emitido', texto: r.atestado ? `${r.atestado_titulo || 'Atestado médico'}: ${r.atestado}${r.atestado_cid && r.atestado_cid_aut ? ` (CID ${String(r.atestado_cid).toUpperCase()}, autorizado pela paciente)` : ''}` : '' },
+      { titulo: 'Avaliação e conduta', campos: [{ rotulo: 'Hipótese diagnóstica', valor: r.hipotese }, { rotulo: 'CID-10', valor: r.cid ? [String(r.cid).toUpperCase(), r.cid_desc].filter(Boolean).join(' — ') : '' }, { rotulo: 'Conduta', valor: r.conduta }, { rotulo: 'Retorno', valor: r.retorno }] },
+      { titulo: 'Prescrição (registro anterior)', texto: legado.map((i, n) => `${n + 1}. ${[i.nome, i.apresentacao].filter(Boolean).join(' ')}${i.quantidade ? ` — ${i.quantidade}` : ''}${i.posologia ? `: ${i.posologia}` : ''}`).join('\n') },
+      { titulo: 'Documentos emitidos', texto: DOCS_CONSULTA.filter(d => d.tipo !== 'registro').map(d => `- ${fmtData(d.emitido_em)} ${fmtHora(d.emitido_em)} · ${d.titulo}${d.anulado_em ? ' (anulado)' : ''}${d.resumo ? `: ${d.resumo}` : ''}`).join('\n') },
       { titulo: 'Adendos', texto: C.adendos.map(a => `- ${fmtData(a.em)} ${fmtHora(a.em)}: ${a.texto}`).join('\n') }
     ];
   }
@@ -848,50 +1097,49 @@
     const faltas = [];
     if (!r.motivo && !r.hda) faltas.push('queixa/história');
     if (!r.hipotese && !r.conduta) faltas.push('avaliação/conduta');
-    const msg = `Depois de finalizada, a consulta fica guardada no prontuário e não pode mais ser editada — só complementada com adendos datados.${faltas.length ? ` Atenção: ainda sem ${faltas.join(' e ')}.` : ''}`;
+    const pend = docTemConteudo(r.doc_rascunho) ? ` Há ${NOME_DOC[r.doc_rascunho.tipo].toLowerCase()} em edição que ainda não foi emitida — ela será descartada.` : '';
+    const msg = `Depois de finalizada, a consulta fica guardada no prontuário e não pode mais ser editada — só complementada com adendos datados. Você ainda poderá emitir documentos pela ficha da paciente.${faltas.length ? ` Atenção: ainda sem ${faltas.join(' e ')}.` : ''}${pend}`;
     if (!(await confirmar(msg, { ok: 'Finalizar consulta', titulo: 'Finalizar consulta' }))) return;
     await ocupado(btn, async () => {
-      try { await salvarPendente(); C = await DB.consultas.finalizar(C.id); toast('Consulta finalizada e guardada no prontuário.'); leituraConsulta($('#main')); window.scrollTo(0, 0); }
+      try { if (r.doc_rascunho) { delete r.doc_rascunho; sujo = true; } await salvarPendente(); C = await DB.consultas.finalizar(C.id); C.registro = C.registro || {}; C.adendos = C.adendos || []; toast('Consulta finalizada e guardada no prontuário.'); leituraConsulta($('#main')); window.scrollTo(0, 0); }
       catch (err) { falha(err); }
     });
   }
 
   function leituraConsulta(main) {
-    const blocos = registroParaPDF().slice(1);
+    const blocos = registroParaPDF().slice(1).filter(b => b.titulo !== 'Adendos' && b.titulo !== 'Documentos emitidos');
     const secoes = blocos.map(b => {
       const campos = (b.campos || []).filter(c => c.valor);
-      if (b.titulo === 'Prescrição') {
-        if (!C.prescricao.length) return '';
-        return `<section class="card read"><h2 style="font-size:1.5rem;margin-bottom:12px">Prescrição</h2><ol class="rx-list">${C.prescricao.map((i, n) => `<li class="rx"><b>${n + 1}. ${esc([i.nome, i.apresentacao].filter(Boolean).join(' '))}</b>${i.quantidade ? ` <span class="muted">— ${esc(i.quantidade)}</span>` : ''} <span class="chip">${esc(i.via || 'Oral')}</span>${i.antimicrobiano ? ' <span class="chip copper">Antimicrobiano</span>' : ''}${i.controlado ? ' <span class="chip danger">Controle especial</span>' : ''}${i.posologia ? `<p class="muted" style="margin-top:4px">${esc(i.posologia)}</p>` : ''}</li>`).join('')}</ol></section>`;
-      }
-      if (b.titulo === 'Adendos') return '';
       if (!campos.length && !b.texto) return '';
       return `<section class="card read"><h2 style="font-size:1.5rem;margin-bottom:12px">${esc(b.titulo)}</h2>${campos.length ? `<dl>${campos.map(c => `<dt>${esc(c.rotulo)}</dt><dd>${esc(c.valor)}</dd>`).join('')}</dl>` : ''}${b.texto ? `<p style="white-space:pre-wrap" class="wrap-any">${esc(b.texto)}</p>` : ''}</section>`;
     }).join('');
     main.innerHTML = `
       ${cabecalhoConsulta(`<span class="chip ok">${ICON.check.replace('<svg', '<svg width="14" height="14"')}Finalizada${C.finalizada_em ? ` em ${fmtData(C.finalizada_em)} ${fmtHora(C.finalizada_em)}` : ''}</span>`)}
       <div class="actions" style="margin-bottom:16px">
-        <button class="btn btn-primary" data-x="pdf-rx">${ICON.doc}Receituário</button>
-        ${C.exames.length ? `<button class="btn btn-ghost" data-x="pdf-ex">${ICON.doc}Solicitação de exames</button>` : ''}
-        ${C.registro.atestado ? `<button class="btn btn-ghost" data-x="pdf-at">${ICON.doc}${esc(C.registro.atestado_titulo || 'Atestado')}</button>` : ''}
-        <button class="btn btn-ghost" data-x="pdf-reg">${ICON.doc}Registro da consulta</button>
+        <button class="btn btn-primary" data-x="novo-doc">${ICON.plus}Emitir documento</button>
+        <button class="btn btn-ghost" data-x="pdf-reg">${ICON.doc}Registro da consulta (PDF)</button>
       </div>
       ${temAlergia(CP.alergias) ? `<div class="alert danger" style="margin-bottom:12px">${ICON.alert}<p><b>Alergias:</b> ${esc(CP.alergias)}</p></div>` : ''}
       ${secoes || '<div class="empty"><p>Esta consulta foi finalizada sem registros.</p></div>'}
+      <section class="card" id="docs-fin"><h2 style="font-size:1.5rem;margin-bottom:12px">Documentos emitidos</h2><div id="docs-lista"></div></section>
       <section class="card" id="adendos">
         <h2 style="font-size:1.5rem;margin-bottom:12px">Adendos</h2>
         ${C.adendos.length ? C.adendos.map(a => `<div class="adendo"><p class="small muted">${fmtData(a.em)} às ${fmtHora(a.em)}</p><p style="white-space:pre-wrap" class="wrap-any">${esc(a.texto)}</p></div>`).join('') : '<p class="muted small">Para corrigir ou complementar esta consulta, registre um adendo — ele fica datado e não substitui o original.</p>'}
         <form id="f-ad" class="stack" style="margin-top:12px" novalidate>${areaTexto('ad-t', 'texto', '', { rot: 'Novo adendo', linhas: 3, campo: 'adendo' })}<div class="actions"><button class="btn btn-ghost" type="submit">Adicionar adendo</button></div></form>
       </section>`;
-    main.querySelector('[data-x="pdf-rx"]').addEventListener('click', gerarReceita);
-    const be = main.querySelector('[data-x="pdf-ex"]'); if (be) be.addEventListener('click', gerarExames);
-    const ba = main.querySelector('[data-x="pdf-at"]'); if (ba) ba.addEventListener('click', gerarAtestado);
-    main.querySelector('[data-x="pdf-reg"]').addEventListener('click', () => gerarEmostrar({ ...dadosBasePDF(CP, clinicaPorId(C.clinica_id), C.data), tipo: 'registro', registro: registroParaPDF().slice(1), subtitulo: C.tipo }, 'Registro da consulta'));
+    desenharDocsConsulta();
+    const recarregar = () => DB.documentos.list({ consultaId: C.id }).then(l => { DOCS_CONSULTA = l; desenharDocsConsulta(); });
+    main.querySelector('[data-x="novo-doc"]').addEventListener('click', () => dialogoNovoDocumento(CP, { consultaId: C.id, depois: recarregar }));
+    main.querySelector('[data-x="pdf-reg"]').addEventListener('click', e => ocupado(e.currentTarget, () => {
+      const cl = clinicaPorId(C.clinica_id) || {};
+      const dados = { medico: pick(S.perfil, ['tratamento', 'nome', 'especialidade', 'crm', 'crm_uf', 'rqe', 'telefone', 'email']), clinica: pick(cl, ['nome', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email']), paciente: pick(CP, ['nome', 'nome_social', 'data_nascimento', 'sexo', 'cpf']), data: new Date().toISOString(), tamanho: S.perfil.pdf_tamanho || 'A4', marcaDagua: S.perfil.pdf_marca_dagua !== false, tipo: 'registro', registro: registroParaPDF().slice(1), subtitulo: `${C.tipo} de ${fmtData(C.data)}` };
+      return emitirDados(dados, { pacienteId: CP.id, consultaId: C.id, clinicaId: C.clinica_id, paciente: CP, aoEmitir: async () => { await recarregar(); } });
+    }));
     main.querySelector('#f-ad').addEventListener('submit', async e => {
       e.preventDefault(); const ta = $('#ad-t'); const t = ta.value.trim();
       if (!t) { erroCampo(ta, 'Escreva o adendo.'); ta.focus(); return; }
       await ocupado($('button[type=submit]', e.currentTarget), async () => {
-        try { C = await DB.consultas.adendo(C.id, t); C.adendos = C.adendos || []; toast('Adendo registrado.'); leituraConsulta(main); $('#adendos').scrollIntoView(); } catch (err) { falha(err); }
+        try { C = await DB.consultas.adendo(C.id, t); C.adendos = C.adendos || []; C.registro = C.registro || {}; toast('Adendo registrado.'); leituraConsulta(main); $('#adendos').scrollIntoView(); } catch (err) { falha(err); }
       });
     });
   }
@@ -899,7 +1147,8 @@
   /* =====================================================================
      Modelos e textos padrão
      ===================================================================== */
-  const TIPOS_MODELO = [['prescricao', 'Prescrição'], ['exames', 'Exames'], ['atestado', 'Atestados'], ['texto', 'Textos da consulta']];
+  const TIPOS_MODELO = [['medicamentos', 'Medicamentos'], ['prescricao', 'Receitas padrão'], ['exames', 'Pacotes de exames'], ['atestado', 'Atestados'], ['texto', 'Textos da consulta']];
+  const contaTipo = k => k === 'medicamentos' ? S.favoritos.length : modelosDo(k).length;
   // Campos de texto livre que aceitam "textos padrão"
   const CAMPOS = [
     ['motivo', 'Queixa principal'], ['hda', 'História da doença atual'], ['gineco_obs', 'Outras informações gineco-obstétricas'],
@@ -931,10 +1180,11 @@
 
   /* ---------- variáveis dos modelos de atestado ---------- */
   function variaveisAuto() {
-    const d = new Date(C ? C.data : Date.now());
-    const cl = C ? clinicaPorId(C.clinica_id) : null;
+    const vc = VARS_CTX || { paciente: CP, clinicaId: C && C.clinica_id, data: C ? C.data : new Date().toISOString() };
+    const d = new Date(vc.data || Date.now()); const P = vc.paciente;
+    const cl = clinicaPorId(vc.clinicaId);
     return {
-      paciente: CP ? (CP.nome_social || CP.nome) : '', cpf: CP ? CP.cpf : '', idade: CP ? idade(CP.data_nascimento) : '',
+      paciente: P ? (P.nome_social || P.nome) : '', cpf: P ? P.cpf : '', idade: P ? idade(P.data_nascimento) : '',
       data: PDF.dataExtenso(d), hora: `${pad(d.getHours())}h${pad(d.getMinutes())}`, clinica: cl ? cl.nome : ''
     };
   }
@@ -1066,61 +1316,192 @@
       });
     });
   }
-  const copiaItem = i => ({ nome: i.nome || '', apresentacao: i.apresentacao || '', via: i.via || 'Oral', quantidade: i.quantidade || '', posologia: i.posologia || '', antimicrobiano: !!i.antimicrobiano, controlado: !!i.controlado });
-  async function usarModeloNaConsulta(tipo) {
-    const m = await escolherModelo(tipo); if (!m) return;
+  function rxItensHTML(lista, estrela, pref = 'rx') {
+    return lista.map((it, i) => `<li class="rx">
+      <div class="rx-top"><span class="n" aria-hidden="true">${i + 1}.</span><span class="flags">${it.antimicrobiano ? '<span class="chip copper">Antimicrobiano · 2 vias</span>' : ''}${it.controlado ? '<span class="chip danger">Controle especial</span>' : ''}</span>
+        <button type="button" class="icon-btn" data-x="rx-up" data-i="${i}" aria-label="Mover medicamento ${i + 1} para cima" ${i === 0 ? 'disabled' : ''}>${ICON.down.replace('<svg', '<svg style="transform:rotate(180deg)"')}</button>
+        <button type="button" class="icon-btn" data-x="rx-down" data-i="${i}" aria-label="Mover medicamento ${i + 1} para baixo" ${i === lista.length - 1 ? 'disabled' : ''}>${ICON.down}</button>
+        ${estrela ? `<button type="button" class="icon-btn" data-x="rx-star" data-i="${i}" aria-label="Guardar medicamento ${i + 1} no meu banco de medicamentos" title="Guardar no meu banco de medicamentos">${ICON.star}</button>` : ''}
+        <button type="button" class="icon-btn" data-x="rx-del" data-i="${i}" aria-label="Remover medicamento ${i + 1}">${ICON.trash}</button></div>
+      <div class="rx-grid">
+        ${campo('Medicamento', `<input id="${pref}-n-${i}" data-rx="${i}" data-k="nome" value="${esc(it.nome)}" list="fav-list" placeholder="Nome (DCB ou comercial)">`)}
+        ${campo('Concentração / forma', `<input id="${pref}-a-${i}" data-rx="${i}" data-k="apresentacao" value="${esc(it.apresentacao)}" placeholder="Ex.: 500 mg comprimido">`)}
+        ${campo('Via', `<select id="${pref}-v-${i}" data-rx="${i}" data-k="via">${[...new Set([...VIAS, it.via || 'Oral'])].map(vv => `<option ${vv === (it.via || 'Oral') ? 'selected' : ''}>${esc(vv)}</option>`).join('')}</select>`)}
+        ${campo('Quantidade', `<input id="${pref}-q-${i}" data-rx="${i}" data-k="quantidade" value="${esc(it.quantidade)}" placeholder="Ex.: 1 caixa">`)}
+        <div class="full">${campo('Posologia', `<textarea id="${pref}-p-${i}" data-rx="${i}" data-k="posologia" rows="2" placeholder="Ex.: Tomar 1 comprimido de 12 em 12 horas por 7 dias.">${esc(it.posologia)}</textarea>`)}</div>
+        <div class="full checks"><label class="check small"><input type="checkbox" data-rx="${i}" data-k="antimicrobiano" ${it.antimicrobiano ? 'checked' : ''}> Antimicrobiano (receita em 2 vias)</label><label class="check small"><input type="checkbox" data-rx="${i}" data-k="controlado" ${it.controlado ? 'checked' : ''}> Controle especial (Portaria 344)</label></div>
+      </div></li>`).join('');
+  }
+  function atualizarListaMedicamentos() {
+    let dl = document.getElementById('fav-list');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'fav-list'; document.body.appendChild(dl); }
+    dl.innerHTML = S.favoritos.map(f => `<option value="${esc(f.nome)}">${esc(f.apresentacao)}</option>`).join('');
+  }
+
+  /* ---------- banco de medicamentos ---------- */
+  async function salvarComoMedicamento(it, btn, depois) {
+    if (!it || !(it.nome || '').trim()) return toast('Preencha o nome do medicamento antes de guardar.', true);
+    if (S.favoritos.some(f => norm(f.nome) === norm(it.nome) && norm(f.apresentacao) === norm(it.apresentacao))) return toast('Este medicamento já está no seu banco.');
+    await ocupado(btn, async () => {
+      try { const f = await DB.favoritos.save({ ...copiaItem(it), nome: it.nome.trim() }); S.favoritos.push(f); atualizarListaMedicamentos(); toast(`${it.nome} guardado no seu banco de medicamentos.`); depois && depois(); }
+      catch (err) { falha(err); }
+    });
+  }
+  function dialogoMedicamento(orig, depois) {
+    const novo = !orig; const m = orig ? { ...orig } : copiaItem({});
+    abrirDialogo({
+      titulo: novo ? 'Novo medicamento' : 'Editar medicamento',
+      corpo: `<form id="f-med" class="grid grid-2" novalidate>
+        ${campo('Medicamento *', `<input id="md-n" name="nome" value="${esc(m.nome)}" placeholder="Nome (DCB ou comercial)">`)}
+        ${campo('Concentração / forma', `<input id="md-a" name="apresentacao" value="${esc(m.apresentacao)}" placeholder="Ex.: 500 mg comprimido">`)}
+        ${campo('Via', `<select id="md-v" name="via">${[...new Set([...VIAS, m.via || 'Oral'])].map(v => `<option ${v === (m.via || 'Oral') ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`)}
+        ${campo('Quantidade', `<input id="md-q" name="quantidade" value="${esc(m.quantidade)}" placeholder="Ex.: 1 caixa">`)}
+        <div class="span-all">${campo('Posologia padrão', `<textarea id="md-p" name="posologia" rows="3" placeholder="Ex.: Tomar 1 comprimido de 12 em 12 horas por 7 dias.">${esc(m.posologia)}</textarea>`)}</div>
+        <label class="check span-all"><input type="checkbox" name="antimicrobiano" ${m.antimicrobiano ? 'checked' : ''}> Antimicrobiano (receita em 2 vias)</label>
+        <label class="check span-all"><input type="checkbox" name="controlado" ${m.controlado ? 'checked' : ''}> Controle especial (não sai nesta receita)</label>
+      </form>`,
+      rodape: `${novo ? '' : `<button class="btn btn-danger" data-del>${ICON.trash}Excluir</button>`}<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar</button>`,
+      aoAbrir: (d, fechar) => {
+        d.querySelector('#md-n').addEventListener('change', e => { const f = d.querySelector('#f-med'); const v = e.target.value; if (temTermo(v, ANTIMICROBIANOS)) f.antimicrobiano.checked = true; if (temTermo(v, CONTROLADOS)) f.controlado.checked = true; });
+        d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+          const v = lerForm(d.querySelector('#f-med')); const n = d.querySelector('#md-n');
+          if (!v.nome) { erroCampo(n, 'Informe o medicamento.'); n.focus(); return; }
+          try { await DB.favoritos.save({ ...(novo ? {} : { id: orig.id }), ...v }); S.favoritos = await DB.favoritos.list(); atualizarListaMedicamentos(); toast(novo ? 'Medicamento cadastrado.' : 'Medicamento atualizado.'); fechar(); depois && depois(); } catch (err) { falha(err); }
+        }));
+        const del = d.querySelector('[data-del]');
+        if (del) del.addEventListener('click', async () => {
+          fechar();
+          if (!(await confirmar(`Excluir “${orig.nome}” do seu banco de medicamentos? Receitas já emitidas não mudam.`, { ok: 'Excluir', perigo: true, titulo: 'Excluir medicamento' }))) return;
+          try { await DB.favoritos.remove(orig.id); S.favoritos = S.favoritos.filter(x => x.id !== orig.id); atualizarListaMedicamentos(); toast('Medicamento excluído.'); depois && depois(); } catch (err) { falha(err); }
+        });
+      }
+    });
+  }
+
+  /* ---------- usar / salvar modelos no editor de documento ---------- */
+  let VARS_CTX = null;
+  async function usarModeloNoEditor(E, ctx) {
+    const tipo = E.tipo === 'receita' ? 'prescricao' : E.tipo;
+    if (!['prescricao', 'exames', 'atestado'].includes(tipo)) return false;
+    const m = await escolherModelo(tipo); if (!m) return false;
     const c = m.conteudo || {};
     if (tipo === 'prescricao') {
-      const tem = C.prescricao.some(i => i.nome) || C.orientacoes.trim();
-      const modo = tem ? await substituirOuAdicionar('Usar modelo de prescrição') : 'sub'; if (!modo) return;
+      const tem = E.itens.some(i => i.nome) || (E.orientacoes || '').trim();
+      const modo = tem ? await substituirOuAdicionar('Usar receita padrão') : 'sub'; if (!modo) return false;
       const itens = (c.itens || []).map(copiaItem);
-      C.prescricao = modo === 'sub' ? itens : C.prescricao.filter(i => i.nome).concat(itens);
-      if (c.orientacoes) C.orientacoes = modo === 'sub' || !C.orientacoes.trim() ? c.orientacoes : C.orientacoes.replace(/\s*$/, '') + '\n' + c.orientacoes;
-      else if (modo === 'sub') C.orientacoes = '';
-      $('#c-orient').value = C.orientacoes; desenharRx();
+      E.itens = modo === 'sub' ? itens : E.itens.filter(i => i.nome).concat(itens);
+      if (c.orientacoes) E.orientacoes = modo === 'sub' || !(E.orientacoes || '').trim() ? c.orientacoes : E.orientacoes.replace(/\s*$/, '') + '\n' + c.orientacoes;
+      else if (modo === 'sub') E.orientacoes = '';
     } else if (tipo === 'exames') {
-      const tem = C.exames.some(e => e.nome);
-      const modo = tem ? await substituirOuAdicionar('Usar modelo de exames') : 'sub'; if (!modo) return;
-      const ex = (c.exames || []).map(e => ({ nome: e.nome || '' }));
-      C.exames = modo === 'sub' ? ex : C.exames.filter(e => e.nome).concat(ex);
-      if (c.indicacao && (modo === 'sub' || !C.registro.indicacao_exames)) { C.registro.indicacao_exames = c.indicacao; $('#r-ind').value = c.indicacao; }
-      desenharEx();
-    } else if (tipo === 'atestado') {
-      if (C.registro.atestado && !(await confirmar('Substituir o texto atual do atestado pelo modelo?', { ok: 'Substituir', titulo: 'Usar modelo de atestado' }))) return;
-      const texto = await perguntarVariaveis(c.texto || ''); if (texto == null) return;
-      C.registro.atestado = texto; C.registro.atestado_titulo = c.titulo || 'Atestado médico';
-      $('#r-atest').value = texto; $('#r-atestado_titulo').value = C.registro.atestado_titulo;
-      if (!CP.cpf && !/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/.test(texto)) toast('A ficha da paciente está sem CPF — a Resolução CFM 2.381/2024 pede nome e CPF nos documentos.', true);
+      const tem = E.exames.some(x => x.nome);
+      const modo = tem ? await substituirOuAdicionar('Usar pacote de exames') : 'sub'; if (!modo) return false;
+      const ex = (c.exames || []).map(x => ({ nome: x.nome || '' }));
+      E.exames = modo === 'sub' ? ex : E.exames.filter(x => x.nome).concat(ex);
+      if (c.indicacao && (modo === 'sub' || !E.indicacao)) E.indicacao = c.indicacao;
+    } else {
+      if ((E.texto || '').trim() && !(await confirmar('Substituir o texto atual do atestado pelo modelo?', { ok: 'Substituir', titulo: 'Usar modelo de atestado' }))) return false;
+      VARS_CTX = { paciente: ctx.paciente, clinicaId: E.clinica_id, data: ctx.data || new Date().toISOString() };
+      const texto = await perguntarVariaveis(c.texto || ''); VARS_CTX = null; if (texto == null) return false;
+      E.texto = texto; E.titulo = c.titulo || 'Atestado médico';
+      if (!ctx.paciente.cpf && !/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/.test(texto)) toast('A ficha da paciente está sem CPF — a Resolução CFM 2.381/2024 pede nome e CPF nos documentos.', true);
     }
-    agendarSalvar(); marcarSecoes(); toast(`Modelo “${m.nome}” aplicado — edite o que precisar.`);
+    toast(`“${m.nome}” aplicado — edite o que precisar.`);
+    return true;
   }
-  function salvarComoModelo(tipo) {
+  function salvarEditorComoModelo(E) {
+    const tipo = E.tipo === 'receita' ? 'prescricao' : E.tipo;
     let conteudo, vazio;
-    if (tipo === 'prescricao') { const itens = C.prescricao.filter(i => i.nome).map(copiaItem); conteudo = { itens, orientacoes: C.orientacoes }; vazio = !itens.length && !C.orientacoes.trim(); }
-    else if (tipo === 'exames') { const ex = C.exames.filter(e => e.nome).map(e => ({ nome: e.nome })); conteudo = { exames: ex, indicacao: C.registro.indicacao_exames || '' }; vazio = !ex.length; }
-    else { conteudo = { titulo: C.registro.atestado_titulo || 'Atestado médico', texto: C.registro.atestado || '' }; vazio = !conteudo.texto.trim(); }
-    if (vazio) return toast('Preencha esta parte da consulta antes de salvar como modelo.', true);
+    if (tipo === 'prescricao') { const itens = E.itens.filter(i => i.nome).map(copiaItem); conteudo = { itens, orientacoes: E.orientacoes || '' }; vazio = !itens.length; }
+    else if (tipo === 'exames') { const ex = E.exames.filter(x => x.nome).map(x => ({ nome: x.nome })); conteudo = { exames: ex, indicacao: E.indicacao || '' }; vazio = !ex.length; }
+    else if (tipo === 'atestado') { conteudo = { titulo: E.titulo || 'Atestado médico', texto: E.texto || '' }; vazio = !conteudo.texto.trim(); }
+    else return;
+    if (vazio) return toast(tipo === 'prescricao' ? 'Adicione medicamentos antes de salvar a receita padrão.' : 'Preencha o documento antes de salvar como modelo.', true);
+    const rot = { prescricao: 'receita padrão', exames: 'pacote de exames', atestado: 'modelo de atestado' }[tipo];
     abrirDialogo({
-      titulo: 'Salvar como modelo',
-      corpo: `<form id="sm-f" class="stack" novalidate>${campo('Nome do modelo', `<input id="sm-nome" autofocus placeholder="${tipo === 'prescricao' ? 'Ex.: Vaginose bacteriana' : tipo === 'exames' ? 'Ex.: Rotina anual' : 'Ex.: Afastamento'}">`)}
-        ${tipo === 'atestado' ? `<p class="small muted">Dica: depois, na área Modelos, troque o nome da paciente, a data e os dias por {paciente}, {data} e {dias} para o modelo se preencher sozinho.</p>` : ''}</form>`,
-      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar modelo</button>`,
+      titulo: `Salvar como ${rot}`,
+      corpo: `<form id="sm-f" class="stack" novalidate>${campo('Nome', `<input id="sm-nome" autofocus placeholder="${tipo === 'prescricao' ? 'Ex.: Vaginose bacteriana' : tipo === 'exames' ? 'Ex.: Rotina anual' : 'Ex.: Afastamento'}">`)}
+        ${tipo === 'prescricao' ? `<p class="small muted">${conteudo.itens.length} ${conteudo.itens.length === 1 ? 'medicamento' : 'medicamentos'}${conteudo.orientacoes ? ' e as orientações' : ''} ficarão salvos com este nome para usar em outras pacientes.</p>` : ''}
+        ${tipo === 'atestado' ? `<p class="small muted">Dica: na área Modelos, troque o nome da paciente, a data e os dias por {paciente}, {data} e {dias} para o modelo se preencher sozinho.</p>` : ''}</form>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar</button>`,
       aoAbrir: (d, fechar) => d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
-        const n = d.querySelector('#sm-nome'); if (!n.value.trim()) { erroCampo(n, 'Dê um nome ao modelo.'); n.focus(); return; }
-        try { await salvarModelo({ tipo, nome: n.value.trim(), conteudo }); toast('Modelo salvo.'); fechar(); } catch (err) { falha(err); }
+        const n = d.querySelector('#sm-nome'); if (!n.value.trim()) { erroCampo(n, 'Dê um nome.'); n.focus(); return; }
+        try { await salvarModelo({ tipo, nome: n.value.trim(), conteudo }); toast(`${rot.charAt(0).toUpperCase() + rot.slice(1)} “${n.value.trim()}” salva.`); fechar(); } catch (err) { falha(err); }
       }))
     });
   }
 
+  /* ---------- enviar documentos à paciente (e-mail / WhatsApp) ---------- */
+  function telefoneWhats(t) {
+    let d = String(t || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.length === 10 || d.length === 11) d = '55' + d;
+    return d.length >= 12 ? d : '';
+  }
+  async function dialogoEnviar(paciente, docs) {
+    docs = docs.filter(d => !d.anulado_em);
+    if (!docs.length) return toast('Não há documentos válidos para enviar.', true);
+    const primeiro = (paciente.nome_social || paciente.nome || '').split(/\s+/)[0] || '';
+    const assunto = `Seus documentos — ${MARCA_NOME}`;
+    const msgPadrao = `Olá, ${primeiro}! Seguem os documentos do seu atendimento com a ${MARCA_NOME}. Qualquer dúvida, estou à disposição.`;
+    const nativo = !!(navigator.canShare && typeof File === 'function' && navigator.canShare({ files: [new File([new Blob(['x'], { type: 'application/pdf' })], 'teste.pdf', { type: 'application/pdf' })] }));
+    abrirDialogo({
+      titulo: 'Enviar para a paciente', largo: true,
+      corpo: `<div class="stack">
+        <fieldset class="envio-docs"><legend class="label">Documentos</legend>${docs.map(d => `<label class="check"><input type="checkbox" data-envdoc="${esc(d.id)}" checked> <span><b>${esc(d.titulo)}</b> <span class="muted small">· ${fmtData(d.emitido_em)} ${fmtHora(d.emitido_em)}</span><br><span class="small muted wrap-any">${esc(d.nome_arquivo)}</span></span></label>`).join('')}</fieldset>
+        ${campo('Mensagem', `<textarea id="env-msg" rows="3">${esc(msgPadrao)}</textarea>`)}
+        <section class="envio-canal"><h3>${ICON.share}E-mail</h3>
+          <div class="grid grid-2">${campo('E-mail da paciente', `<input id="env-email" type="email" inputmode="email" value="${esc(paciente.email || '')}" placeholder="nome@exemplo.com">`)}${campo('Assunto', `<input id="env-assunto" value="${esc(assunto)}">`)}</div>
+          <p class="small muted">Os PDFs vão anexados. ${DB.modo === 'demo' ? 'Na demonstração o e-mail não é enviado de verdade.' : 'Respostas da paciente chegam no e-mail do seu perfil.'}</p>
+          <div class="actions"><button type="button" class="btn btn-primary" data-env="email">Enviar por e-mail</button></div></section>
+        <section class="envio-canal"><h3>${ICON.share}WhatsApp</h3>
+          ${campo('WhatsApp da paciente', `<input id="env-tel" type="tel" inputmode="tel" value="${esc(paciente.telefone || '')}" placeholder="(71) 90000-0000">`)}
+          <p class="small muted">${nativo ? '“Compartilhar PDFs” anexa os arquivos — escolha o WhatsApp e a conversa da paciente. ' : ''}“Abrir no WhatsApp” abre a conversa com a mensagem pronta e links seguros para os PDFs, válidos por 7 dias.</p>
+          <div class="actions">${nativo ? `<button type="button" class="btn btn-primary" data-env="share">${ICON.share}Compartilhar PDFs</button>` : ''}<button type="button" class="btn ${nativo ? 'btn-ghost' : 'btn-primary'}" data-env="whats">Abrir no WhatsApp</button></div></section>
+      </div>`,
+      aoAbrir: (d, fechar) => {
+        const escolhidos = () => docs.filter(x => d.querySelector(`[data-envdoc="${x.id}"]`).checked);
+        const blobs = async lista => Promise.all(lista.map(async x => { const full = x.dados ? x : await DB.documentos.get(x.id); const b = (await DB.documentos.pdf(full)) || PDF.gerar(full.dados).blob; return new File([b], x.nome_arquivo, { type: 'application/pdf' }); }));
+        d.addEventListener('click', e => {
+          const b = e.target.closest('[data-env]'); if (!b) return;
+          const lista = escolhidos(); if (!lista.length) return toast('Marque ao menos um documento.', true);
+          const msg = d.querySelector('#env-msg').value.trim();
+          if (b.dataset.env === 'email') ocupado(b, async () => {
+            const em = d.querySelector('#env-email');
+            if (!/^\S+@\S+\.\S+$/.test(em.value.trim())) { erroCampo(em, 'Informe um e-mail válido.'); em.focus(); return; } else erroCampo(em);
+            try { await DB.envios.email({ documentos: lista.map(x => x.id), para: em.value.trim(), assunto: d.querySelector('#env-assunto').value.trim() || assunto, mensagem: msg, pacienteId: paciente.id }); toast(`E-mail enviado para ${em.value.trim()}.`); fechar(); }
+            catch (err) { falha(err); }
+          });
+          else if (b.dataset.env === 'share') ocupado(b, async () => {
+            try { const files = await blobs(lista); await navigator.share({ files, text: msg, title: assunto }); DB.envios.registrar({ paciente_id: paciente.id, canal: 'whatsapp', destino: 'compartilhado', documentos: lista.map(x => x.id) }).catch(() => {}); } catch (err) { if (err && err.name !== 'AbortError') falha(err); }
+          });
+          else if (b.dataset.env === 'whats') ocupado(b, async () => {
+            const tel = d.querySelector('#env-tel'); const num = telefoneWhats(tel.value);
+            if (!num) { erroCampo(tel, 'Informe o WhatsApp com DDD.'); tel.focus(); return; } else erroCampo(tel);
+            try {
+              const links = await Promise.all(lista.map(async x => ({ x, url: await DB.documentos.linkTemporario(x, 7) })));
+              const corpo = `${msg}\n\n${links.map(({ x, url }) => `• ${x.titulo}${url ? `: ${url}` : ''}`).join('\n')}${links.some(l => l.url) ? '\n\nOs links ficam disponíveis por 7 dias.' : ''}`;
+              const href = `https://wa.me/${num}?text=${encodeURIComponent(corpo)}`;
+              const w = window.open(href, '_blank', 'noopener');
+              if (!w) { const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+              if (!links.some(l => l.url)) toast('Na demonstração não há links para os PDFs; envie os arquivos baixados.');
+              DB.envios.registrar({ paciente_id: paciente.id, canal: 'whatsapp', destino: num, documentos: lista.map(x => x.id) }).catch(() => {});
+            } catch (err) { falha(err); }
+          });
+        });
+      }
+    });
+  }
+
   /* ---------- página Modelos ---------- */
-  let filtroModelo = 'prescricao';
+  let filtroModelo = 'medicamentos';
   async function viewModelos(main) {
-    S.modelos = await DB.modelos.list();
+    [S.modelos, S.favoritos] = await Promise.all([DB.modelos.list(), DB.favoritos.list()]); atualizarListaMedicamentos();
+    if (filtroModelo === 'medicamentos') return viewMedicamentos(main);
     const nomeT = (TIPOS_MODELO.find(t => t[0] === filtroModelo) || [])[1];
     const lst = modelosDo(filtroModelo);
     let corpo;
     if (!lst.length) {
-      corpo = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhum modelo de ${esc(nomeT.toLowerCase())}</h3><p>${{ prescricao: 'Monte prescrições prontas (medicamentos, posologia e orientações) para aplicar com um toque na consulta.', exames: 'Monte pacotes de exames (ex.: rotina anual, investigação de infertilidade) com a indicação clínica.', atestado: 'Atestados com campos automáticos: nome, CPF, data e hora entram sozinhos; os dias de afastamento são perguntados.', texto: 'Textos padrão para qualquer campo da consulta — exame físico normal, exame ginecológico, conduta… Marque como automático para já vir preenchido.' }[filtroModelo]}</p>
+      corpo = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nada em “${esc(nomeT)}” ainda</h3><p>${{ prescricao: 'Selecione medicamentos do seu banco, ajuste a posologia e salve com um nome. Depois, na receita de qualquer paciente, é só tocar em “Usar receita padrão”.', exames: 'Monte pacotes de exames (ex.: rotina anual, investigação de infertilidade) com a indicação clínica.', atestado: 'Atestados com campos automáticos: nome, CPF, data e hora entram sozinhos; os dias de afastamento são perguntados.', texto: 'Textos padrão para qualquer campo da consulta — exame físico normal, exame ginecológico, conduta… Marque como automático para já vir preenchido.' }[filtroModelo]}</p>
         <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-x="novo">${ICON.plus}Criar modelo</button><button class="btn btn-ghost" data-x="basicos">Restaurar sugestões</button></div></div>`;
     } else if (filtroModelo === 'texto') {
       const grupos = {}; lst.forEach(m => { const k = (m.conteudo || {}).campo || 'outros'; (grupos[k] = grupos[k] || []).push(m); });
@@ -1128,12 +1509,32 @@
     } else corpo = `<ul class="list">${lst.map(linhaModelo).join('')}</ul>`;
     main.innerHTML = `
       <div class="page-head"><div><h1>Modelos</h1><p class="muted small">Tudo o que você escreve sempre igual, pronto para aplicar e editar na consulta. Os itens “Sugerido” são pontos de partida: abra, ajuste e salve para virar o seu padrão.</p></div><div class="actions"><button class="btn btn-ghost" data-x="basicos">Restaurar sugestões</button><button class="btn btn-primary" data-x="novo">${ICON.plus}Novo modelo</button></div></div>
-      <div class="filter-chips" role="group" aria-label="Tipo de modelo" style="margin-bottom:16px">${TIPOS_MODELO.map(([k, t]) => `<button type="button" data-tm="${k}" aria-pressed="${k === filtroModelo}">${t} <span class="muted">(${modelosDo(k).length})</span></button>`).join('')}</div>
+      ${abasModelos()}
       ${corpo}`;
     $$('[data-tm]', main).forEach(b => b.addEventListener('click', () => { filtroModelo = b.dataset.tm; viewModelos(main); }));
     $$('[data-x="novo"]', main).forEach(b => b.addEventListener('click', () => dialogoModelo({ tipo: filtroModelo }, () => viewModelos(main))));
     $$('[data-mid]', main).forEach(b => b.addEventListener('click', () => dialogoModelo(S.modelos.find(m => m.id === b.dataset.mid), () => viewModelos(main))));
     $$('[data-x="basicos"]', main).forEach(bb => bb.addEventListener('click', () => ocupado(bb, async () => { try { const n = await restaurarSugestoes(); toast(n ? `${n} ${n === 1 ? 'sugestão adicionada' : 'sugestões adicionadas'}.` : 'Todas as sugestões já estão na sua lista.'); viewModelos(main); } catch (err) { falha(err); } })));
+  }
+  const abasModelos = () => `<div class="filter-chips" role="group" aria-label="Tipo de modelo" style="margin-bottom:16px">${TIPOS_MODELO.map(([k, t]) => `<button type="button" data-tm="${k}" aria-pressed="${k === filtroModelo}">${t} <span class="muted">(${contaTipo(k)})</span></button>`).join('')}</div>`;
+  function viewMedicamentos(main) {
+    main.innerHTML = `
+      <div class="page-head"><div><h1>Modelos</h1><p class="muted small">Seu banco de medicamentos: cadastre os que você usa. Na receita, um toque adiciona o medicamento já com apresentação, quantidade e posologia — e você edita ali mesmo.</p></div><div class="actions"><button class="btn btn-ghost" data-x="basicos-med">Restaurar sugestões</button><button class="btn btn-primary" data-x="novo-med">${ICON.plus}Novo medicamento</button></div></div>
+      ${abasModelos()}
+      <div class="search" style="margin-bottom:12px"><label class="sr-only" for="med-busca">Buscar medicamento</label>${ICON.search}<input id="med-busca" type="search" placeholder="Buscar medicamento" autocomplete="off"></div>
+      <div id="med-lista"></div>`;
+    const lista = $('#med-lista', main), busca = $('#med-busca', main);
+    const draw = () => {
+      const q = norm(busca.value).trim(); const m = S.favoritos.filter(f => !q || norm(f.nome + ' ' + f.apresentacao).includes(q)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      lista.innerHTML = !S.favoritos.length ? `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhum medicamento cadastrado</h3><p>Cadastre os medicamentos que você prescreve com frequência, com a posologia que costuma usar.</p><button class="btn btn-primary" data-x="novo-med">${ICON.plus}Cadastrar medicamento</button></div>`
+        : m.length ? `<ul class="list">${m.map(f => `<li><button type="button" class="row" data-medid="${esc(f.id)}"><span class="avatar" aria-hidden="true">${ICON.doc.replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(f.nome)} <span class="muted">${esc(f.apresentacao)}</span></span><span class="meta"><span>${esc(f.via)}</span>${f.quantidade ? `<span>${esc(f.quantidade)}</span>` : ''}${f.antimicrobiano ? '<span class="chip copper">Antimicrobiano</span>' : ''}${f.controlado ? '<span class="chip danger">Controle especial</span>' : ''}</span>${f.posologia ? `<span class="small muted wrap-any">${esc(f.posologia)}</span>` : ''}</span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`).join('')}</ul>` : `<p class="muted small">Nenhum medicamento encontrado.</p>`;
+      $$('[data-medid]', lista).forEach(b => b.addEventListener('click', () => dialogoMedicamento(S.favoritos.find(f => f.id === b.dataset.medid), () => viewModelos(main))));
+      $$('[data-x="novo-med"]', lista).forEach(b => b.addEventListener('click', () => dialogoMedicamento(null, () => viewModelos(main))));
+    };
+    busca.addEventListener('input', draw); draw();
+    $$('[data-tm]', main).forEach(b => b.addEventListener('click', () => { filtroModelo = b.dataset.tm; viewModelos(main); }));
+    main.querySelector('.page-head [data-x="novo-med"]').addEventListener('click', () => dialogoMedicamento(null, () => viewModelos(main)));
+    main.querySelector('[data-x="basicos-med"]').addEventListener('click', e => ocupado(e.currentTarget, async () => { try { const n = await restaurarMedicamentos(); toast(n ? `${n} ${n === 1 ? 'medicamento sugerido adicionado' : 'medicamentos sugeridos adicionados'}.` : 'Todos os medicamentos sugeridos já estão no seu banco.'); viewModelos(main); } catch (err) { falha(err); } }));
   }
   function linhaModelo(m) {
     return `<li><button type="button" class="row" data-mid="${esc(m.id)}"><span class="avatar" aria-hidden="true">${(m.tipo === 'texto' ? ICON.text : ICON.layers).replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><span class="title">${esc(m.nome)} ${(m.conteudo || {}).sugerido ? '<span class="chip">Sugerido</span>' : ''} ${(m.conteudo || {}).auto ? '<span class="chip copper">Automático</span>' : ''}</span><span class="small muted wrap-any">${esc(resumoModelo(m))}</span></span>${ICON.chev.replace('<svg', '<svg class="chev"')}</button></li>`;
@@ -1143,14 +1544,14 @@
     const novo = !orig.id;
     const M = JSON.parse(JSON.stringify({ nome: '', conteudo: {}, ...orig }));
     const c = M.conteudo;
-    if (M.tipo === 'prescricao') { c.itens = c.itens || []; c.orientacoes = c.orientacoes || ''; if (!c.itens.length) c.itens.push(copiaItem({})); }
+    if (M.tipo === 'prescricao') { c.itens = c.itens || []; c.orientacoes = c.orientacoes || ''; }
     if (M.tipo === 'exames') { c.exames = c.exames || []; c.indicacao = c.indicacao || ''; if (!c.exames.length) c.exames.push({ nome: '' }); }
     if (M.tipo === 'atestado') { c.titulo = c.titulo || 'Atestado médico'; c.texto = c.texto || ''; }
     if (M.tipo === 'texto') { c.campo = c.campo || 'exame_fisico'; c.texto = c.texto || ''; }
-    const nomeT = { prescricao: 'prescrição', exames: 'exames', atestado: 'atestado', texto: 'texto padrão' }[M.tipo];
+    const nomeT = { prescricao: 'receita padrão', exames: 'pacote de exames', atestado: 'atestado', texto: 'texto padrão' }[M.tipo];
     const VARS = ['paciente', 'cpf', 'data', 'hora', 'dias', 'idade', 'clinica'];
     let corpo = `<form id="md-f" class="stack" novalidate>${campo('Nome do modelo *', `<input id="md-nome" value="${esc(M.nome)}" placeholder="${{ prescricao: 'Ex.: Candidíase vulvovaginal', exames: 'Ex.: Rotina ginecológica anual', atestado: 'Ex.: Afastamento', texto: 'Ex.: Exame ginecológico normal' }[M.tipo]}">`)}`;
-    if (M.tipo === 'prescricao') corpo += `<datalist id="fav-list-md">${S.favoritos.map(f => `<option value="${esc(f.nome)}">${esc(f.apresentacao)}</option>`).join('')}</datalist><p class="label">Medicamentos</p><ol class="rx-list" id="md-rx"></ol><div class="actions"><button type="button" class="btn btn-ghost" data-m="rx-add">${ICON.plus}Adicionar medicamento</button></div>${campo('Orientações', `<textarea id="md-or" rows="4">${esc(c.orientacoes)}</textarea>`)}`;
+    if (M.tipo === 'prescricao') corpo += `${medsPainelHTML('mdp')}<p class="label">Medicamentos desta receita padrão</p><ol class="rx-list" id="md-rx"></ol><div class="actions"><button type="button" class="btn btn-ghost" data-m="rx-add">${ICON.plus}Adicionar medicamento</button></div>${campo('Orientações', `<textarea id="md-or" rows="4">${esc(c.orientacoes)}</textarea>`)}`;
     if (M.tipo === 'exames') corpo += `<p class="label">Exames</p><ul class="ex-list" id="md-ex"></ul><div class="actions"><button type="button" class="btn btn-ghost" data-m="ex-add">${ICON.plus}Adicionar exame</button></div>${campo('Indicação clínica', `<textarea id="md-ind" rows="2">${esc(c.indicacao)}</textarea>`)}`;
     if (M.tipo === 'atestado') corpo += `${campo('Título do documento', `<input id="md-tit" value="${esc(c.titulo)}">`)}${campo('Texto', `<textarea id="md-tx" rows="7">${esc(c.texto)}</textarea>`)}<div><p class="label" style="margin-bottom:6px">Inserir campo automático</p><div class="chips">${VARS.map(v => `<button type="button" class="chip var-chip" data-var-ins="{${v}}">{${v}}</button>`).join('')}</div><p class="small muted" style="margin-top:8px">Nome, CPF, data, hora, idade e clínica entram sozinhos. {dias} e qualquer outro campo entre chaves (ex.: {acompanhante}) são perguntados na hora de usar.</p></div>`;
     if (M.tipo === 'texto') corpo += `${campo('Campo da consulta', `<select id="md-campo">${CAMPOS.map(([k, t]) => `<option value="${k}" ${k === c.campo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}${campo('Texto padrão', `<textarea id="md-tx" rows="7">${esc(c.texto)}</textarea>`)}<label class="check"><input type="checkbox" id="md-auto" ${c.auto ? 'checked' : ''}> Já preencher este campo em toda nova consulta</label>`;
@@ -1159,7 +1560,8 @@
       titulo: novo ? `Novo modelo de ${nomeT}` : `Editar modelo de ${nomeT}`, largo: M.tipo === 'prescricao', corpo,
       rodape: `${novo ? '' : `<button class="btn btn-danger" data-m="del">${ICON.trash}Excluir</button>`}${M.tipo !== 'texto' ? `<button class="btn btn-ghost" data-m="prev">${ICON.doc}Ver PDF</button>` : ''}<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-m="ok">Salvar modelo</button>`,
       aoAbrir: (d, fechar) => {
-        const drawRx = foco => { const ol = d.querySelector('#md-rx'); if (!ol) return; ol.innerHTML = rxItensHTML(c.itens, false).replaceAll('list="fav-list"', 'list="fav-list-md"').replace(/id="rx-/g, 'id="md-rx-'); if (foco) d.querySelector(`#md-rx-n-${c.itens.length - 1}`).focus(); };
+        const drawRx = foco => { const ol = d.querySelector('#md-rx'); if (!ol) return; ol.innerHTML = c.itens.length ? rxItensHTML(c.itens, false, 'md-rx') : '<li class="muted small">Toque nos medicamentos acima para montar a receita padrão.</li>'; if (foco) d.querySelector(`#md-rx-n-${c.itens.length - 1}`).focus(); };
+        const medsMd = d.querySelector('.meds'); if (medsMd) desenharMeds(medsMd);
         const drawEx = foco => { const ul = d.querySelector('#md-ex'); if (!ul) return; ul.innerHTML = c.exames.map((e, i) => `<li><label class="sr-only" for="md-ex-${i}">Exame ${i + 1}</label><input id="md-ex-${i}" data-ex="${i}" value="${esc(e.nome)}" placeholder="Ex.: Hemograma completo"><button type="button" class="icon-btn" data-m="ex-del" data-i="${i}" aria-label="Remover exame ${i + 1}">${ICON.trash}</button></li>`).join(''); if (foco) d.querySelector(`#md-ex-${c.exames.length - 1}`).focus(); };
         drawRx(); drawEx();
         const ler = () => {
@@ -1171,6 +1573,7 @@
         };
         d.addEventListener('input', e => {
           const el = e.target;
+          if (el.matches('[data-medq]')) return desenharMeds(medsMd);
           if (el.dataset.rx != null) { const it = c.itens[+el.dataset.rx]; if (el.type === 'checkbox') { it[el.dataset.k] = el.checked; drawRx(); } else it[el.dataset.k] = el.value; }
           if (el.dataset.ex != null) c.exames[+el.dataset.ex].nome = el.value;
         });
@@ -1184,6 +1587,9 @@
           drawRx();
         });
         d.addEventListener('click', async e => {
+          const med = e.target.closest('[data-med]');
+          if (med) { const f = S.favoritos.find(x => x.id === med.dataset.med); if (f) { c.itens = c.itens.filter(it => (it.nome || '').trim()); c.itens.push(copiaItem(f)); drawRx(); toast(`${f.nome} adicionado.`); } return; }
+          if (e.target.closest('[data-med-novo]')) { dialogoMedicamento(null, () => desenharMeds(medsMd)); return; }
           const vi = e.target.closest('[data-var-ins]');
           if (vi) { const ta = d.querySelector('#md-tx'); const st = ta.selectionStart ?? ta.value.length; ta.value = ta.value.slice(0, st) + vi.dataset.varIns + ta.value.slice(ta.selectionEnd ?? st); ta.focus(); ta.selectionStart = ta.selectionEnd = st + vi.dataset.varIns.length; return; }
           const b = e.target.closest('[data-x], [data-m]'); if (!b) return;
@@ -1294,19 +1700,12 @@
         <label class="check"><input type="checkbox" name="pdf_marca_dagua" ${p.pdf_marca_dagua !== false ? 'checked' : ''}> Marca d'água suave com o símbolo da logomarca</label>
         <div class="actions" style="margin-top:16px"><button class="btn btn-primary" type="submit">Salvar perfil</button><button class="btn btn-ghost" type="button" data-x="modelo">${ICON.doc}Ver modelo do receituário</button></div>
       </form>
-      <section class="card">
-        <div class="page-head" style="margin-bottom:8px"><h2 style="font-size:1.5rem">Medicamentos favoritos</h2><button class="btn btn-ghost" data-x="fav-novo">${ICON.plus}Novo favorito</button></div>
-        <p class="muted small" style="margin-bottom:12px">Na prescrição, toque na estrela de um medicamento para guardá-lo aqui e reutilizar com um toque.</p>
-        <ul class="list" id="fav-l"></ul>
-      </section>
+      <section class="card"><h2 style="font-size:1.5rem;margin-bottom:8px">Medicamentos e modelos</h2><p class="muted small">Seu banco de medicamentos, receitas padrão, pacotes de exames, atestados e textos padrão ficam em <a href="#modelos">Modelos</a>.</p></section>
       <section class="card">
         <h2 style="font-size:1.5rem;margin-bottom:8px">Dados e segurança</h2>
         <p class="muted small">${DB.modo === 'demo' ? 'Modo demonstração: os dados ficam só neste navegador.' : `Conectado ao banco seguro (Supabase). Conta: ${esc(S.user.email)}.`} O prontuário deve ser guardado por no mínimo 20 anos (Lei 13.787/2018); baixe cópias de segurança periodicamente.</p>
         <div class="actions" style="margin-top:12px"><button class="btn btn-ghost" data-x="backup">${ICON.download}Baixar cópia de segurança</button>${DB.modo === 'demo' ? `<button class="btn btn-quiet" data-x="reset">Restaurar dados de exemplo</button>` : ''}<button class="btn btn-danger" data-x="sair">Sair</button></div>
       </section>`;
-    const favL = $('#fav-l', main);
-    const drawFav = () => { favL.innerHTML = S.favoritos.length ? S.favoritos.map(f => `<li class="row" style="cursor:default"><span class="grow"><span class="title">${esc(f.nome)} ${esc(f.apresentacao)}</span><span class="meta"><span>${esc(f.via)}</span>${f.quantidade ? `<span>${esc(f.quantidade)}</span>` : ''}${f.antimicrobiano ? '<span>antimicrobiano</span>' : ''}</span>${f.posologia ? `<span class="small muted">${esc(f.posologia)}</span>` : ''}</span><button class="icon-btn" data-delfav="${esc(f.id)}" aria-label="Remover ${esc(f.nome)} dos favoritos">${ICON.trash}</button></li>`).join('') : '<li class="muted small">Nenhum favorito ainda.</li>'; $$('[data-delfav]', favL).forEach(b => b.addEventListener('click', async () => { try { await DB.favoritos.remove(b.dataset.delfav); S.favoritos = S.favoritos.filter(x => x.id !== b.dataset.delfav); drawFav(); toast('Favorito removido.'); } catch (e) { falha(e); } })); };
-    drawFav();
     $('#f-perfil', main).addEventListener('submit', async e => {
       e.preventDefault(); const v = lerForm(e.currentTarget);
       await ocupado($('button[type=submit]', e.currentTarget), async () => { try { S.perfil = await DB.perfil.save({ ...S.perfil, ...v }); toast('Perfil salvo.'); $$('.who b').forEach(b => b.textContent = nomeMedica()); } catch (err) { falha(err); } });
@@ -1317,7 +1716,7 @@
         const v = lerForm($('#f-perfil', main)); const perfilTmp = { ...S.perfil, ...v };
         const cl = S.clinicas[0] || { nome: 'Nome da clínica', endereco: 'Endereço da clínica', cidade: 'Salvador', uf: 'BA', telefone: '(71) 0000-0000' };
         try { const r = PDF.gerar({ medico: perfilTmp, clinica: cl, paciente: { nome: 'Paciente Exemplo da Silva', data_nascimento: '1990-03-15', sexo: 'F' }, data: new Date(), tamanho: perfilTmp.pdf_tamanho, marcaDagua: perfilTmp.pdf_marca_dagua, tipo: 'receita', itens: [{ nome: 'Ácido fólico', apresentacao: '5 mg', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido por via oral, uma vez ao dia.' }, { nome: 'Exemplo de creme vaginal', apresentacao: 'bisnaga', via: 'Vaginal', quantidade: '1 bisnaga', posologia: 'Aplicar 1 aplicador à noite, por 7 noites.' }], orientacoes: '- Este é um modelo: os dados da paciente e os medicamentos são fictícios.\n- Retorno em 30 dias.' }); mostrarPDF(r, 'Modelo do receituário'); } catch (err) { falha(err); }
-      } else if (b.dataset.x === 'fav-novo') dialogoFavorito(drawFav);
+      }
       else if (b.dataset.x === 'backup') ocupado(b, async () => {
         try {
           const dados = await DB.exportar(); const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
@@ -1331,32 +1730,21 @@
       else if (b.dataset.x === 'sair') { await salvarPendente(); await DB.auth.signOut(); S.user = null; S.pacientes = null; telaAuth(); }
     });
   }
-  function dialogoFavorito(depois) {
-    abrirDialogo({
-      titulo: 'Novo favorito',
-      corpo: `<form id="f-fv" class="grid grid-2" novalidate>
-        ${campo('Medicamento *', `<input id="fv-n" name="nome" required>`)}
-        ${campo('Concentração / forma', `<input id="fv-a" name="apresentacao">`)}
-        ${campo('Via', `<select id="fv-v" name="via">${VIAS.map(v => `<option>${v}</option>`).join('')}</select>`)}
-        ${campo('Quantidade', `<input id="fv-q" name="quantidade">`)}
-        <div class="span-all">${campo('Posologia', `<textarea id="fv-p" name="posologia" rows="3"></textarea>`)}</div>
-        <label class="check span-all"><input type="checkbox" name="antimicrobiano"> Antimicrobiano (receita em 2 vias)</label>
-      </form>`,
-      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar favorito</button>`,
-      aoAbrir: (d, fechar) => d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
-        const v = lerForm(d.querySelector('#f-fv')); const n = d.querySelector('#fv-n');
-        if (!v.nome) { erroCampo(n, 'Informe o medicamento.'); n.focus(); return; }
-        try { const f = await DB.favoritos.save({ ...v, controlado: temTermo(v.nome, CONTROLADOS) }); S.favoritos.push(f); S.favoritos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')); toast('Favorito salvo.'); fechar(); depois(); } catch (err) { falha(err); }
-      }))
-    });
-  }
-
   /* =====================================================================
      Inicialização
      ===================================================================== */
+  const MEDICAMENTOS_BASE = () => { const vistos = new Set(); const out = []; window.MODELOS_BASE.filter(m => m.tipo === 'prescricao').forEach(m => (m.conteudo.itens || []).forEach(i => { const k = norm(i.nome + '|' + i.apresentacao); if (!vistos.has(k)) { vistos.add(k); out.push(copiaItem(i)); } })); return out; };
+  async function restaurarMedicamentos() {
+    const tem = new Set(S.favoritos.map(f => norm(f.nome + '|' + f.apresentacao)));
+    const faltam = MEDICAMENTOS_BASE().filter(m => !tem.has(norm(m.nome + '|' + m.apresentacao)));
+    for (const m of faltam) await DB.favoritos.save(m);
+    S.favoritos = await DB.favoritos.list(); atualizarListaMedicamentos();
+    return faltam.length;
+  }
   async function iniciarModelos() {
     if (S.perfil.modelos_iniciados) return;
     if (!S.modelos.length) { await DB.modelos.saveMany(window.MODELOS_BASE.map(m => JSON.parse(JSON.stringify(m)))); S.modelos = await DB.modelos.list(); }
+    if (!S.favoritos.length) await restaurarMedicamentos();
     try { S.perfil = await DB.perfil.save({ ...S.perfil, modelos_iniciados: true }); } catch (e) { console.warn(e); }
   }
   async function restaurarSugestoes() {
@@ -1369,7 +1757,7 @@
   async function iniciarSessao() {
     S.user = await DB.auth.session();
     if (!S.user) return telaAuth();
-    try { await carregarBase(); await iniciarModelos(); } catch (e) { falha(e); }
+    try { await carregarBase(); await iniciarModelos(); atualizarListaMedicamentos(); } catch (e) { falha(e); }
     moldura();
     await rotear();
   }

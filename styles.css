@@ -320,3 +320,43 @@ dialog.wide { width: min(980px, calc(100vw - 24px)); }
 .auth .foot { text-align: center; margin-top: var(--s5); font-size: var(--t-xs); color: var(--muted); }
 
 @media print { .topbar, .bottomnav, .sidebar, .bottombar, .demo-banner { display: none !important; } }
+
+/* ---------- documentos ---------- */
+.doc-tipos .btn { flex: 1 1 200px; }
+.doc-editor { margin-top: var(--s4); padding: var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: #FFFDFD; }
+.doc-editor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); margin-bottom: var(--s4); padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+.doc-editor-head h3 { font-size: 1.45rem; }
+.doc-acoes { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); justify-content: flex-end; }
+.doc-acoes .btn { flex: 1 1 180px; }
+@media (min-width: 640px) { .doc-acoes .btn { flex: 0 0 auto; } }
+.doc-row.anulado .title { text-decoration: line-through; text-decoration-color: var(--danger); }
+.doc-row.anulado .chip { text-decoration: none; }
+.abas-ficha { margin: var(--s8) 0 var(--s4); max-width: 440px; }
+
+/* banco de medicamentos: toque para adicionar */
+.meds { display: grid; gap: var(--s3); padding: var(--s3); border: 1px dashed var(--line-2); border-radius: var(--r-md); background: var(--bg); }
+.meds-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s1) var(--s3); }
+.meds-head .label { flex: 1 1 14rem; }
+.med-chips { display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); max-height: 300px; overflow-y: auto; padding: 2px; }
+.med-chip { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--s2); align-items: center; min-height: 52px; padding: 8px 12px; text-align: left; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+.med-chip:hover { background: var(--wine-soft); border-color: var(--rose); }
+.med-chip .med-n { font-weight: 500; font-size: var(--t-sm); overflow-wrap: anywhere; }
+.med-chip .med-a { grid-column: 1; font-size: var(--t-xs); color: var(--muted); overflow-wrap: anywhere; }
+.med-chip svg { grid-column: 2; grid-row: 1 / span 2; width: 20px; height: 20px; color: var(--wine); }
+
+/* CID-10 com busca */
+.combo { position: relative; }
+.combo-lb { position: absolute; z-index: 15; top: calc(100% + 4px); right: 0; width: max(100%, min(440px, calc(100vw - 32px))); max-height: 300px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-md); box-shadow: 0 12px 32px rgba(74, 20, 40, .16); }
+.combo-lb li { display: flex; gap: var(--s2); padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: var(--t-sm); line-height: 1.35; }
+.combo-lb li b { flex: none; min-width: 3.6em; color: var(--wine); font-weight: 500; }
+.combo-lb li[aria-selected="true"], .combo-lb li:hover { background: var(--wine-soft); }
+.combo-lb li.vazio { color: var(--muted); cursor: default; background: none; }
+.cid-desc:empty { display: none; }
+
+/* enviar à paciente */
+.envio-docs { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; }
+.envio-docs .check { align-items: flex-start; padding: 6px 0; }
+.envio-docs .check input { margin-top: 2px; }
+.envio-canal { display: grid; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); }
+.envio-canal h3 { display: flex; align-items: center; gap: var(--s2); font-size: 1.35rem; }
+.envio-canal h3 svg { width: 20px; height: 20px; }

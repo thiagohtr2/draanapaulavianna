@@ -477,6 +477,18 @@
    *           exames:[{nome}], indicacao, registro:[{rotulo, valor}], tamanho:'A4'|'A5', marcaDagua:bool }
    * retorna { blob, nomeArquivo, avisos:[], paginas }
    */
+  const ROTULOS = { receita: 'Receita', orientacoes: 'Orientacoes', exames: 'Solicitacao de exames', registro: 'Registro da consulta', atestado: 'Atestado' };
+  // Primeiro_Ultimo_Documento_dd-mm-aaaa.pdf (sem acentos nem espaços)
+  function nomeDoArquivo(nome, rotulo, data) {
+    const ascii = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ]+/g, ' ').trim();
+    const partes = ascii(nome).split(/\s+/).filter(Boolean);
+    const pac = partes.length > 1 ? [partes[0], partes[partes.length - 1]] : (partes.length ? [partes[0]] : ['Paciente']);
+    const d = data instanceof Date ? data : new Date(data || Date.now());
+    const dt = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    const rot = ascii(rotulo || 'Documento').split(/\s+/).map((w, i) => i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w.toLowerCase()).join('_');
+    return `${pac.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('_')}_${rot}_${dt}.pdf`;
+  }
+
   function gerar(dados) {
     const avisos = [];
     const data = dados.data instanceof Date ? dados.data : new Date(dados.data || Date.now());
@@ -542,12 +554,9 @@
     }
 
     renderizar(ctx, secoes);
-    const primeiroNome = clean(ctx.paciente.nome).split(/\s+/).slice(0, 2).join('-') || 'paciente';
-    const ymd = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
-    const prefixo = { receita: 'Receita', orientacoes: 'Orientacoes', exames: 'Exames', registro: 'Consulta', atestado: 'Atestado' }[tipo];
-    const nomeArquivo = `${prefixo}_${primeiroNome}_${ymd}.pdf`.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const nomeArquivo = nomeDoArquivo(ctx.paciente.nome, dados.rotuloArquivo || ROTULOS[tipo], data);
     return { blob: doc.output('blob'), nomeArquivo, avisos, paginas: doc.getNumberOfPages() };
   }
 
-  window.DocumentosPDF = { gerar, idade, dataExtenso };
+  window.DocumentosPDF = { gerar, idade, dataExtenso, nomeDoArquivo };
 })();
