@@ -22,7 +22,35 @@
   const iniciais = n => String(n || '?').trim().split(/\s+/).filter(Boolean).map(p => p[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('').toUpperCase();
   const hoje = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
   const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-  const TIPOS = ['Primeira consulta', 'Consulta', 'Retorno', 'Fertilidade', 'Pré-natal', 'Procedimento', 'Teleconsulta'];
+  // Área da consulta (assunto) e atendimento (primeira consulta / retorno / procedimento) são separados.
+  // O número do retorno é contado sozinho dentro de cada área: uma "Primeira consulta" reinicia a contagem.
+  const AREAS = ['Ginecológica', 'Obstétrica (pré-natal)', 'Fertilidade', 'Planejamento familiar', 'Climatério e menopausa', 'Outra'];
+  const MODALIDADES = ['Primeira consulta', 'Retorno', 'Procedimento'];
+  const areaDe = c => c.area || ({ Fertilidade: 'Fertilidade', 'Pré-natal': 'Obstétrica (pré-natal)' }[c.tipo]) || 'Ginecológica';
+  const modalidadeDe = c => MODALIDADES.includes(c.tipo) ? c.tipo : 'Retorno';
+  function rotulosConsultas(lista) {
+    const out = {}, cont = {};
+    [...(lista || [])].sort((a, b) => new Date(a.data) - new Date(b.data)).forEach(c => {
+      const a = areaDe(c), m = modalidadeDe(c); let r;
+      if (m === 'Primeira consulta') { cont[a] = 0; r = 'Primeira consulta'; }
+      else if (m === 'Retorno') { cont[a] = (cont[a] || 0) + 1; r = `${cont[a]}º retorno`; }
+      else r = 'Procedimento';
+      out[c.id] = { area: a, modalidade: m, rotulo: r, texto: `${a} · ${r}` };
+    });
+    return out;
+  }
+  const AREA_VISUAL = {
+    'Ginecológica': { cls: 'gine', curto: 'Ginecologia', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.2"/><path d="M12 14.2V21M8.8 17.8h6.4"/></svg>' },
+    'Obstétrica (pré-natal)': { cls: 'obst', curto: 'Pré-natal', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="4.6" r="2"/><path d="M9.2 7.6c-1.6.6-2.4 2.3-2.4 4.4v3.2h2.4V21"/><path d="M10.8 7.8c1.3.4 2 1.4 2.1 2.6 2.6.3 4.4 2.1 4.4 4.3 0 2-1.6 3.4-3.7 3.6H12V21"/></svg>' },
+    'Fertilidade': { cls: 'fert', curto: 'Fertilidade', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12c0-3.6-2.6-6.3-6.6-6.3 0 3.7 2.6 6.3 6.6 6.3z"/><path d="M12 14.5c0-3.4 2.4-6 6.4-6 0 3.5-2.5 6-6.4 6z"/></svg>' },
+    'Planejamento familiar': { cls: 'plan', curto: 'Planejamento familiar', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M12 17.6l-2.3-2.2a1.45 1.45 0 0 1 2.3-1.8 1.45 1.45 0 0 1 2.3 1.8z"/></svg>' },
+    'Climatério e menopausa': { cls: 'clim', curto: 'Climatério', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/><path d="M17 3.5v3M15.5 5h3"/></svg>' },
+    'Outra': { cls: 'outra', curto: 'Outra', icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5v5a4 4 0 0 0 8 0v-5"/><path d="M10 12.5v2.5a4.5 4.5 0 0 0 9 0v-2"/><circle cx="19" cy="11" r="2"/></svg>' }
+  };
+  const visualArea = a => AREA_VISUAL[a] || AREA_VISUAL['Outra'];
+  // selo da área (ícone + nome curto), em destaque ao lado do nome da paciente
+  const seloArea = (a, extra = '') => { const v = visualArea(a); return `<span class="area-selo area-${v.cls}" title="Consulta ${esc(a.toLowerCase())}">${v.icone}<span>${esc(v.curto)}${extra ? ` · ${esc(extra)}` : ''}</span></span>`; };
+  const chipArea = a => seloArea(a);
   const VIAS = ['Oral', 'Vaginal', 'Tópico', 'Sublingual', 'Transdérmico', 'Intramuscular', 'Subcutâneo', 'Endovenoso', 'Nasal', 'Retal', 'Oftálmico', 'Inalatório', 'Outro'];
   // Detecção sugerida (ela pode desmarcar). Antimicrobianos: RDC 471/2021. Controle especial: Portaria 344/98 (lista C1).
   const ANTIMICROBIANOS = ['amoxicilina', 'ampicilina', 'azitromicina', 'cefalexina', 'cefuroxima', 'ceftriaxona', 'cefadroxila', 'ciprofloxacino', 'claritromicina', 'clindamicina', 'doxiciclina', 'eritromicina', 'fosfomicina', 'gentamicina', 'levofloxacino', 'metronidazol', 'nitrofurantoina', 'norfloxacino', 'penicilina', 'benzilpenicilina', 'secnidazol', 'sulfametoxazol', 'tinidazol', 'tetraciclina', 'ofloxacino'];
@@ -336,7 +364,8 @@
     const rasc = cs.filter(c => c.status === 'rascunho');
     const hojeN = cs.filter(c => new Date(c.data) >= hoje()).length;
     const ult = cs.filter(c => c.status === 'finalizada').slice(0, 6);
-    const linha = c => { const cl = clinicaPorId(c.clinica_id); return `<li><a class="row" href="#consulta-${esc(c.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(nomeP(c.paciente_id)))}</span><span class="grow"><span class="title">${esc(nomeP(c.paciente_id))}</span><span class="meta"><span>${fmtData(c.data)} · ${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span><span>${esc(c.tipo)}</span></span></span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : ''}${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`; };
+    const rotP = {}; ps.forEach(p => Object.assign(rotP, rotulosConsultas(p.consultas)));
+    const linha = c => { const cl = clinicaPorId(c.clinica_id); const rt = rotP[c.id] || rotulosConsultas([c])[c.id]; return `<li><a class="row" href="#consulta-${esc(c.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(nomeP(c.paciente_id)))}</span><span class="grow"><span class="title nome-selo">${esc(nomeP(c.paciente_id))}${seloArea(rt.area, rt.rotulo)}</span><span class="meta"><span>${fmtData(c.data)} · ${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span></span></span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : ''}${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`; };
     main.innerHTML = `
       <section class="hello">
         <div>
@@ -368,7 +397,7 @@
      ===================================================================== */
   let filtroClinica = '';
   const FP_KEY = 'apv-filtros-pacientes';
-  const FP_PADRAO = { busca: '', ordem: 'nome', clinica: '', periodo: '', convenio: '' };
+  const FP_PADRAO = { busca: '', ordem: 'nome', clinica: '', periodo: '', convenio: '', area: '' };
   let FP = (() => { try { return { ...FP_PADRAO, ...JSON.parse(localStorage.getItem(FP_KEY) || '{}'), busca: '' }; } catch (e) { return { ...FP_PADRAO }; } })();
   const salvarFP = () => { try { localStorage.setItem(FP_KEY, JSON.stringify({ ...FP, busca: '' })); } catch (e) { /* sem armazenamento */ } };
   const ORDENS = [['nome', 'Nome (A–Z)'], ['nome_desc', 'Nome (Z–A)'], ['ultima', 'Última consulta (mais recente)'], ['ultima_antiga', 'Última consulta (mais antiga)'], ['clinica', 'Clínica (agrupar)'], ['idade', 'Idade (mais nova)'], ['idade_desc', 'Idade (mais velha)'], ['cadastro', 'Cadastro mais recente']];
@@ -379,6 +408,7 @@
     const ps = await pacientes(true);
     if (filtroClinica) { FP.clinica = filtroClinica; filtroClinica = ''; }
     if (FP.clinica && !S.clinicas.some(c => c.id === FP.clinica)) FP.clinica = '';
+    ps.forEach(p => { const rt = rotulosConsultas(p.consultas); p.hist = (p.consultas || []).map(c => ({ ...rt[c.id], data: c.data, status: c.status })); p.areaUltima = p.hist.length ? p.hist[0].area : ''; });
     const convenios = [...new Set(ps.map(p => (p.convenio || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     if (FP.convenio && !convenios.includes(FP.convenio)) FP.convenio = '';
     const sel = (id, rot, opts, val) => campo(rot, `<select id="${id}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`);
@@ -386,11 +416,12 @@
       <div class="page-head"><div><h1>Pacientes</h1><p class="muted small">${ps.length} ${ps.length === 1 ? 'paciente cadastrada' : 'pacientes cadastradas'}</p></div>
         <button class="btn btn-primary" data-x="nova">${ICON.plus}Nova paciente</button></div>
       <section class="card filtros" aria-label="Busca e filtros">
-        <div class="search"><label class="sr-only" for="busca">Buscar paciente</label>${ICON.search}<input id="busca" type="search" placeholder="Buscar por nome, CPF, telefone, e-mail ou convênio" autocomplete="off" value="${esc(FP.busca)}"></div>
+        <div class="search"><label class="sr-only" for="busca">Buscar paciente</label>${ICON.search}<input id="busca" type="search" placeholder="Buscar por nome, CPF, telefone, convênio ou área" autocomplete="off" value="${esc(FP.busca)}"></div>
         <div class="filtros-grid">
           ${sel('f-ordem', 'Ordenar por', ORDENS, FP.ordem)}
           ${sel('f-clinica', 'Clínica', [['', 'Todas as clínicas'], ...S.clinicas.map(c => [c.id, c.nome]), ['__sem', 'Sem clínica vinculada']], FP.clinica)}
           ${sel('f-periodo', 'Última consulta', PERIODOS, FP.periodo)}
+          ${sel('f-area', 'Área da última consulta', [['', 'Todas as áreas'], ...AREAS.map(a => [a, a])], FP.area)}
           ${sel('f-convenio', 'Convênio', [['', 'Todos'], ...convenios.map(c => [c, c])], FP.convenio)}
         </div>
         <div class="filtros-foot"><p class="small muted" id="res-count" aria-live="polite"></p><button type="button" class="btn btn-quiet" data-x="limpar">Limpar filtros</button></div>
@@ -399,14 +430,15 @@
     const lista = $('#lista-p', main), busca = $('#busca', main);
     const agoraMs = Date.now(), DIA = 864e5;
     const idadeAnos = p => { if (!p.data_nascimento) return null; const d = new Date(p.data_nascimento + 'T12:00:00'); return (agoraMs - d) / (365.25 * DIA); };
-    const linha = p => `<li><a class="row" href="#paciente-${esc(p.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(p.nome))}</span><span class="grow"><span class="title">${esc(p.nome)}</span><span class="meta">${idade(p.data_nascimento) ? `<span>${idade(p.data_nascimento)}</span>` : ''}${p.convenio ? `<span>${esc(p.convenio)}</span>` : ''}${p.ultima ? `<span>Última consulta ${fmtData(p.ultima)}</span>` : '<span>Sem consultas</span>'}</span>${p.clinicas.length ? `<span class="chips">${p.clinicas.map(id => clinicaPorId(id)).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>` : ''}</span>${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`;
+    const linha = p => `<li><a class="row" href="#paciente-${esc(p.id)}"><span class="avatar" aria-hidden="true">${esc(iniciais(p.nome))}</span><span class="grow"><span class="title nome-selo">${esc(p.nome)}${p.hist.length ? seloArea(p.hist[0].area) : ''}</span><span class="meta">${idade(p.data_nascimento) ? `<span>${idade(p.data_nascimento)}</span>` : ''}${p.convenio ? `<span>${esc(p.convenio)}</span>` : ''}${p.ultima ? '' : '<span>Sem consultas</span>'}</span>${p.hist.length ? `<span class="hist-cons"><span class="hist-ult"><b>${esc(p.hist[0].rotulo)}</b><span class="muted">${p.hist[0].status === 'rascunho' ? 'em andamento · ' : ''}${fmtData(p.hist[0].data)}</span></span>${p.hist.length > 1 ? `<span class="small muted hist-ant">Antes: ${p.hist.slice(1, 4).map(h => `${esc(h.area === p.hist[0].area ? h.rotulo : h.texto)} (${fmtCurta(h.data)})`).join(' · ')}${p.hist.length > 4 ? ` · +${p.hist.length - 4}` : ''}</span>` : ''}</span>` : ''}${p.clinicas.length ? `<span class="chips">${p.clinicas.map(id => clinicaPorId(id)).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>` : ''}</span>${ICON.chev.replace('<svg', '<svg class="chev"')}</a></li>`;
     const desenhar = () => {
       FP.busca = busca.value; salvarFP();
       const q = norm(FP.busca).trim(); const qd = q.replace(/\D/g, '');
       let fs = ps.filter(p => {
-        if (q && !(norm(p.nome).includes(q) || norm(p.nome_social).includes(q) || norm(p.email).includes(q) || norm(p.convenio).includes(q) || (qd.length >= 3 && ((p.cpf || '').replace(/\D/g, '').includes(qd) || (p.telefone || '').replace(/\D/g, '').includes(qd))))) return false;
+        if (q && !(norm(p.nome).includes(q) || norm(p.nome_social).includes(q) || norm(p.email).includes(q) || norm(p.convenio).includes(q) || norm(p.areaUltima).includes(q) || (qd.length >= 3 && ((p.cpf || '').replace(/\D/g, '').includes(qd) || (p.telefone || '').replace(/\D/g, '').includes(qd))))) return false;
         if (FP.clinica === '__sem' ? p.clinicas.length : FP.clinica && !p.clinicas.includes(FP.clinica)) return false;
         if (FP.convenio && (p.convenio || '').trim() !== FP.convenio) return false;
+        if (FP.area && p.areaUltima !== FP.area) return false;
         if (FP.periodo) {
           const dias = p.ultima ? (agoraMs - new Date(p.ultima)) / DIA : null;
           if (FP.periodo === 'nunca') { if (dias !== null) return false; }
@@ -420,7 +452,7 @@
       const porIdade = dir => (a, b) => { const x = idadeAnos(a), y = idadeAnos(b); if (x === null && y === null) return porNome(a, b); if (x === null) return 1; if (y === null) return -1; return dir * (x - y) || porNome(a, b); };
       const ord = { nome: porNome, nome_desc: (a, b) => -porNome(a, b), ultima: porData('ultima', -1), ultima_antiga: porData('ultima', 1), idade: porIdade(1), idade_desc: porIdade(-1), cadastro: porData('criado_em', -1), clinica: porNome }[FP.ordem] || porNome;
       fs = fs.sort(ord);
-      const ativos = [FP.busca.trim(), FP.clinica, FP.periodo, FP.convenio].filter(Boolean).length;
+      const ativos = [FP.busca.trim(), FP.clinica, FP.periodo, FP.convenio, FP.area].filter(Boolean).length;
       $('#res-count', main).textContent = ps.length ? `${fs.length} de ${ps.length} ${ps.length === 1 ? 'paciente' : 'pacientes'}${ativos ? ` · ${ativos} ${ativos === 1 ? 'filtro ativo' : 'filtros ativos'}` : ''}` : '';
       main.querySelector('[data-x="limpar"]').hidden = !ativos;
       if (!ps.length) { lista.innerHTML = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nenhuma paciente ainda</h3><p>Cadastre a primeira paciente e vincule às clínicas onde ela é atendida.</p><button class="btn btn-primary" data-x="nova2">${ICON.plus}Cadastrar paciente</button></div>`; lista.querySelector('[data-x="nova2"]').addEventListener('click', nova); return; }
@@ -433,8 +465,8 @@
     };
     const nova = () => dialogoPaciente(null, p => { location.hash = '#paciente-' + p.id; });
     busca.addEventListener('input', desenhar);
-    [['#f-ordem', 'ordem'], ['#f-clinica', 'clinica'], ['#f-periodo', 'periodo'], ['#f-convenio', 'convenio']].forEach(([id, k]) => $(id, main).addEventListener('change', e => { FP[k] = e.target.value; desenhar(); }));
-    main.querySelector('[data-x="limpar"]').addEventListener('click', () => { FP = { ...FP_PADRAO, ordem: FP.ordem }; busca.value = ''; ['#f-clinica', '#f-periodo', '#f-convenio'].forEach(id => { $(id, main).value = ''; }); desenhar(); busca.focus(); });
+    [['#f-ordem', 'ordem'], ['#f-clinica', 'clinica'], ['#f-periodo', 'periodo'], ['#f-area', 'area'], ['#f-convenio', 'convenio']].forEach(([id, k]) => $(id, main).addEventListener('change', e => { FP[k] = e.target.value; desenhar(); }));
+    main.querySelector('[data-x="limpar"]').addEventListener('click', () => { FP = { ...FP_PADRAO, ordem: FP.ordem }; busca.value = ''; ['#f-clinica', '#f-periodo', '#f-area', '#f-convenio'].forEach(id => { $(id, main).value = ''; }); desenhar(); busca.focus(); });
     main.querySelector('[data-x="nova"]').addEventListener('click', nova);
     desenhar();
   }
@@ -500,7 +532,7 @@
       <a class="back" href="#pacientes">${ICON.back}Pacientes</a>
       <section class="card">
         <div class="pac-head"><span class="avatar" aria-hidden="true">${esc(iniciais(p.nome))}</span>
-          <div><h1 class="wrap-any" style="font-size:clamp(1.7rem,1.3rem + 1.5vw,2.3rem)">${esc(p.nome)}</h1>
+          <div><h1 class="wrap-any" style="font-size:clamp(1.7rem,1.3rem + 1.5vw,2.3rem)">${esc(p.nome)}</h1>${cs.length ? `<p class="nome-selo">${(r => seloArea(r.area, r.rotulo))(rotulosConsultas(cs)[cs[0].id])}${cs[0].status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : `<span class="small muted">última em ${fmtData(cs[0].data)}</span>`}</p>` : ''}
             <p class="muted small">${[p.nome_social ? `Nome social: ${p.nome_social}` : '', idade(p.data_nascimento), p.data_nascimento ? `nasc. ${fmtData(p.data_nascimento)}` : '', p.convenio].filter(Boolean).map(esc).join(' · ')}</p></div></div>
         ${p.clinicas.length ? `<div class="chips" style="margin-top:12px">${p.clinicas.map(clinicaPorId).filter(Boolean).map(c => `<span class="chip">${esc(c.nome)}</span>`).join('')}</div>` : ''}
         ${temAlergia(p.alergias) ? `<div class="alert danger" style="margin-top:16px">${ICON.alert}<p><b>Alergias:</b> ${esc(p.alergias)}</p></div>` : ''}
@@ -521,6 +553,7 @@
         <div id="docs-pac"></div>
       </div>`;
     const tl = $('#tl', main);
+    const rotCs = rotulosConsultas(cs);
     const desenhar = () => {
       const lst = cs.filter(c => !filtro || c.clinica_id === filtro);
       if (!lst.length) { tl.innerHTML = `<div class="empty" style="margin-top:12px"><h3>Nenhuma consulta registrada</h3><p>Inicie a primeira consulta desta paciente — o prontuário fica guardado aqui, por data e por clínica.</p></div>`; return; }
@@ -530,7 +563,8 @@
         if (y !== ano) { if (ano !== null) html += '</ol>'; html += `<p class="year">${y}</p><ol class="timeline">`; ano = y; }
         const cl = clinicaPorId(c.clinica_id); const r = c.registro || {};
         const resumo = r.hipotese || r.motivo || '';
-        html += `<li class="${c.status}"><a class="row" href="#consulta-${esc(c.id)}"><span class="grow"><span class="title">${fmtCurta(c.data)} · ${esc(c.tipo)}</span><span class="meta"><span>${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span>${(n => n ? `<span>${n} ${n === 1 ? 'documento' : 'documentos'}</span>` : '')(docs.filter(d => d.consulta_id === c.id).length)}</span>${resumo ? `<span class="small wrap-any">${esc(resumo.length > 140 ? resumo.slice(0, 140) + '…' : resumo)}</span>` : ''}</span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : '<span class="chip ok">Finalizada</span>'}</a></li>`;
+        const rt = rotCs[c.id];
+        html += `<li class="${c.status}"><a class="row" href="#consulta-${esc(c.id)}"><span class="grow"><span class="title nome-selo">${fmtCurta(c.data)} · ${esc(rt.rotulo)}${seloArea(rt.area)}</span><span class="meta"><span>${fmtHora(c.data)}</span><span>${esc(cl ? cl.nome : '')}</span>${(n => n ? `<span>${n} ${n === 1 ? 'documento' : 'documentos'}</span>` : '')(docs.filter(d => d.consulta_id === c.id).length)}</span>${resumo ? `<span class="small wrap-any">${esc(resumo.length > 140 ? resumo.slice(0, 140) + '…' : resumo)}</span>` : ''}</span>${c.status === 'rascunho' ? '<span class="chip warn">Em andamento</span>' : '<span class="chip ok">Finalizada</span>'}</a></li>`;
       });
       tl.innerHTML = html + '</ol>';
     };
@@ -570,15 +604,35 @@
         <div id="nc-res" aria-live="polite"></div>`}
       <div id="nc-det" ${pac ? '' : 'hidden'} class="grid grid-2">
         ${campo('Clínica', `<select id="nc-cl">${opcoesClinica(pac)}</select>`)}
-        ${campo('Tipo', `<select id="nc-tipo">${TIPOS.map(t => `<option ${t === 'Consulta' ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
-        ${campo('Data e hora', `<input id="nc-data" type="datetime-local" value="${toLocalInput()}">`, 'span-all')}
+        ${campo('Data e hora', `<input id="nc-data" type="datetime-local" value="${toLocalInput()}">`)}
+        ${campo('Área da consulta', `<select id="nc-area">${AREAS.map(a => `<option>${esc(a)}</option>`).join('')}</select>`)}
+        ${campo('Atendimento', `<select id="nc-tipo">${MODALIDADES.map(t => `<option>${t}</option>`).join('')}</select>`)}
+        <p class="span-all nc-dica" id="nc-dica" aria-live="polite"></p>
       </div></div>`;
     abrirDialogo({
       titulo: 'Nova consulta', corpo,
       rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok ${pac ? '' : 'disabled'}>Iniciar consulta</button>`,
       aoAbrir: (d, fechar) => {
         const ok = d.querySelector('[data-ok]');
-        const sel = p => { escolhida = p; d.querySelector('#nc-res').innerHTML = `<div class="summary-card"><span class="label">Paciente</span><div class="actions" style="align-items:center;justify-content:space-between"><b>${esc(p.nome)}</b><button class="btn btn-quiet" type="button" data-trocar>Trocar</button></div></div>`; d.querySelector('#nc-busca').closest('.field').hidden = true; d.querySelector('#nc-det').hidden = false; d.querySelector('#nc-cl').innerHTML = opcoesClinica(p); ok.disabled = false; d.querySelector('[data-trocar]').addEventListener('click', () => { escolhida = null; ok.disabled = true; d.querySelector('#nc-busca').closest('.field').hidden = false; d.querySelector('#nc-det').hidden = true; d.querySelector('#nc-res').innerHTML = ''; d.querySelector('#nc-busca').focus(); }); };
+        let consP = [], tocouTipo = false;
+        const ar = d.querySelector('#nc-area'), tp = d.querySelector('#nc-tipo'), dica = d.querySelector('#nc-dica');
+        const atualizarDica = () => {
+          const nova = { id: '__nova', data: new Date().toISOString(), area: ar.value, tipo: tp.value };
+          const rt = rotulosConsultas([...consP, nova]).__nova;
+          const ant = consP.filter(c => areaDe(c) === ar.value);
+          dica.innerHTML = `<span>Esta será:</span>${seloArea(rt.area, rt.rotulo)}<span class="muted">${ant.length ? `última em ${esc(visualArea(ar.value).curto.toLowerCase())}: ${fmtData(ant[0].data)}` : 'primeira nesta área'}</span>`;
+        };
+        const prepararPaciente = async p => {
+          consP = p.consultas || await DB.consultas.list({ pacienteId: p.id }).catch(() => []);
+          consP = [...consP].sort((a, b) => new Date(b.data) - new Date(a.data));
+          if (consP.length) ar.value = areaDe(consP[0]);
+          tocouTipo = false; tp.value = consP.some(c => areaDe(c) === ar.value) ? 'Retorno' : 'Primeira consulta';
+          atualizarDica();
+        };
+        ar.addEventListener('change', () => { if (!tocouTipo) tp.value = consP.some(c => areaDe(c) === ar.value) ? 'Retorno' : 'Primeira consulta'; atualizarDica(); });
+        tp.addEventListener('change', () => { tocouTipo = true; atualizarDica(); });
+        if (pac) prepararPaciente(pac);
+        const sel = p => { escolhida = p; prepararPaciente(p); d.querySelector('#nc-res').innerHTML = `<div class="summary-card"><span class="label">Paciente</span><div class="actions" style="align-items:center;justify-content:space-between"><b>${esc(p.nome)}</b><button class="btn btn-quiet" type="button" data-trocar>Trocar</button></div></div>`; d.querySelector('#nc-busca').closest('.field').hidden = true; d.querySelector('#nc-det').hidden = false; d.querySelector('#nc-cl').innerHTML = opcoesClinica(p); ok.disabled = false; d.querySelector('[data-trocar]').addEventListener('click', () => { escolhida = null; ok.disabled = true; d.querySelector('#nc-busca').closest('.field').hidden = false; d.querySelector('#nc-det').hidden = true; d.querySelector('#nc-res').innerHTML = ''; d.querySelector('#nc-busca').focus(); }); };
         if (!pac) {
           const inp = d.querySelector('#nc-busca'), res = d.querySelector('#nc-res');
           const draw = () => {
@@ -597,7 +651,7 @@
             if (!escolhida.clinicas.includes(clinica_id)) await DB.pacientes.vincular(escolhida.id, clinica_id);
             const auto = textosAutomaticos();
             const orientAuto = auto.orientacoes || ''; delete auto.orientacoes;
-            const c = await DB.consultas.save({ paciente_id: escolhida.id, clinica_id, tipo: d.querySelector('#nc-tipo').value, data: dt ? new Date(dt).toISOString() : new Date().toISOString(), status: 'rascunho', registro: { incluir_orientacoes: true, ...auto }, prescricao: [], exames: [], orientacoes: orientAuto, adendos: [] });
+            const c = await DB.consultas.save({ paciente_id: escolhida.id, clinica_id, tipo: tp.value, area: ar.value, data: dt ? new Date(dt).toISOString() : new Date().toISOString(), status: 'rascunho', registro: { incluir_orientacoes: true, ...auto }, prescricao: [], exames: [], orientacoes: orientAuto, adendos: [] });
             S.pacientes = null; fechar(); location.hash = '#consulta-' + c.id;
           } catch (err) { falha(err); }
         }));
@@ -615,7 +669,7 @@
     clearTimeout(salvarTimer); if (!C || !sujo || C.status !== 'rascunho') return;
     sujo = false;
     const snap = JSON.parse(JSON.stringify(C));
-    salvando = DB.consultas.save({ id: snap.id, paciente_id: snap.paciente_id, clinica_id: snap.clinica_id, data: snap.data, tipo: snap.tipo, registro: snap.registro, prescricao: snap.prescricao, exames: snap.exames, orientacoes: snap.orientacoes })
+    salvando = DB.consultas.save({ id: snap.id, paciente_id: snap.paciente_id, clinica_id: snap.clinica_id, data: snap.data, tipo: snap.tipo, area: snap.area || areaDe(snap), registro: snap.registro, prescricao: snap.prescricao, exames: snap.exames, orientacoes: snap.orientacoes })
       .then(() => marcarSalvo('', `Salvo às ${fmtHora(new Date().toISOString())}`))
       .catch(e => { sujo = true; marcarSalvo('error', 'Não salvo — sem conexão? Tentando de novo…'); clearTimeout(salvarTimer); salvarTimer = setTimeout(salvarAgora, 5000); console.error(e); });
     await salvando; salvando = null;
@@ -639,15 +693,17 @@
     C = await DB.consultas.get(id);
     if (!C) { main.innerHTML = `<div class="empty"><h2>Consulta não encontrada</h2><p><a href="#inicio">Voltar ao início</a></p></div>`; return; }
     C.registro = C.registro || {}; C.adendos = C.adendos || [];
-    [CP, DOCS_CONSULTA] = await Promise.all([DB.pacientes.get(C.paciente_id), DB.documentos.list({ consultaId: id })]);
+    [CP, DOCS_CONSULTA, CONS_PAC] = await Promise.all([DB.pacientes.get(C.paciente_id), DB.documentos.list({ consultaId: id }), DB.consultas.list({ pacienteId: C.paciente_id }).catch(() => [])]);
     if (C.status === 'finalizada') return leituraConsulta(main);
     edicaoConsulta(main);
   }
 
+  let CONS_PAC = [];
+  const rotuloDaConsulta = () => rotulosConsultas([...CONS_PAC.filter(c => c.id !== C.id), C])[C.id];
   function cabecalhoConsulta(extra) {
     const cl = clinicaPorId(C.clinica_id);
     return `<a class="back" href="#paciente-${esc(C.paciente_id)}">${ICON.back}Ficha da paciente</a>
-      <div class="sticky-ctx"><div class="who"><b>${esc(CP.nome)}</b><span class="muted small">${[idade(CP.data_nascimento), cl ? cl.nome : '', `${fmtData(C.data)} · ${fmtHora(C.data)}`].filter(Boolean).map(esc).join(' · ')}</span></div>${extra}</div>`;
+      <div class="sticky-ctx"><div class="who"><span class="nome-selo"><b>${esc(CP.nome)}</b><span id="ctx-selo">${seloArea(rotuloDaConsulta().area, rotuloDaConsulta().rotulo)}</span></span><span class="muted small">${[idade(CP.data_nascimento), cl ? cl.nome : '', `${fmtData(C.data)} · ${fmtHora(C.data)}`].filter(Boolean).map(esc).join(' · ')}</span></div>${extra}</div>`;
   }
   function resumoFicha() {
     const itens = [['Alergias', CP.alergias], ['Antecedentes', CP.antecedentes], ['Medicações em uso', CP.medicacoes_uso]].filter(x => x[1]);
@@ -667,10 +723,11 @@
         <nav class="secnav" aria-label="Seções da consulta">${SECOES.map(([id, t]) => `<a href="#${id}" data-sec="${id}"><span class="dot" aria-hidden="true"></span>${t}</a>`).join('')}</nav>
         <form id="f-consulta" novalidate autocomplete="off">
           <div class="card" style="margin-bottom:12px">
-            <div class="grid grid-3">
+            <div class="grid grid-2 grid-4">
               ${campo('Clínica', `<select id="c-cl" name="clinica_id">${S.clinicas.filter(c => c.ativa !== false || c.id === C.clinica_id).map(c => `<option value="${esc(c.id)}" ${c.id === C.clinica_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>`)}
-              ${campo('Tipo', `<select id="c-tipo" name="tipo">${[...new Set([...TIPOS, C.tipo])].map(t => `<option ${t === C.tipo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}
               ${campo('Data e hora', `<input id="c-data" name="data" type="datetime-local" value="${toLocalInput(C.data)}">`)}
+              ${campo('Área da consulta', `<select id="c-area" name="area">${[...new Set([...AREAS, areaDe(C)])].map(a => `<option ${a === areaDe(C) ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>`)}
+              ${campo('Atendimento', `<select id="c-tipo" name="tipo">${MODALIDADES.map(t => `<option ${t === modalidadeDe(C) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}
             </div>
             <div style="margin-top:12px">${resumoFicha()}</div>
           </div>
@@ -722,7 +779,7 @@
       const el = e.target;
       if (el.closest('#doc-editor')) return;
       if (el.name && el.name.startsWith('registro.')) { const k = el.name.slice(9); C.registro[k] = el.type === 'checkbox' ? el.checked : el.value; if (k === 'peso' || k === 'altura') calcIMC(); if (k === 'cid' && !el.value) C.registro.cid_desc = ''; }
-      else if (el.name === 'tipo') C.tipo = el.value;
+      else if (el.name === 'tipo' || el.name === 'area') { C[el.name] = el.value; const rc = $('#ctx-selo'); if (rc) rc.innerHTML = seloArea(rotuloDaConsulta().area, rotuloDaConsulta().rotulo); }
       else if (el.name === 'data') { if (el.value) C.data = new Date(el.value).toISOString(); }
       else if (el.name === 'clinica_id') { C.clinica_id = el.value; if (!CP.clinicas.includes(el.value)) DB.pacientes.vincular(CP.id, el.value).then(() => CP.clinicas.push(el.value)).catch(falha); }
       else return;
@@ -1314,7 +1371,7 @@
     const gpa = ['gestacoes', 'partos', 'cesareas', 'abortos'].some(k => r[k]) ? `G${r.gestacoes || 0} PN${r.partos || 0} C${r.cesareas || 0} A${r.abortos || 0}` : '';
     const legado = (C.prescricao || []).filter(i => i.nome);
     return [
-      { titulo: 'Atendimento', campos: [{ rotulo: 'Tipo', valor: C.tipo }, { rotulo: 'Clínica', valor: (clinicaPorId(C.clinica_id) || {}).nome }, { rotulo: 'Data', valor: `${fmtData(C.data)} às ${fmtHora(C.data)}` }] },
+      { titulo: 'Atendimento', campos: [{ rotulo: 'Área', valor: rotuloDaConsulta().area }, { rotulo: 'Atendimento', valor: rotuloDaConsulta().rotulo }, { rotulo: 'Clínica', valor: (clinicaPorId(C.clinica_id) || {}).nome }, { rotulo: 'Data', valor: `${fmtData(C.data)} às ${fmtHora(C.data)}` }] },
       { titulo: 'Queixa e história', campos: [{ rotulo: 'Queixa principal', valor: r.motivo }, { rotulo: 'História atual', valor: r.hda }] },
       { titulo: 'Ginecológico e obstétrico', campos: [{ rotulo: 'DUM', valor: r.dum ? fmtData(r.dum) : '' }, { rotulo: 'Ciclo', valor: r.ciclo }, { rotulo: 'Menarca', valor: r.menarca }, { rotulo: 'Paridade', valor: gpa }, { rotulo: 'Contracepção', valor: r.contracepcao }, { rotulo: 'Tentando engravidar', valor: r.tentante }, { rotulo: 'Último preventivo', valor: r.preventivo }, { rotulo: 'Mamografia/USG', valor: r.mamografia }, { rotulo: 'Outras', valor: r.gineco_obs }] },
       { titulo: 'Exame físico', campos: [{ rotulo: 'Sinais vitais', valor: [r.pa && `PA ${r.pa} mmHg`, r.fc && `FC ${r.fc} bpm`, r.peso && `Peso ${r.peso} kg`, r.altura && `Altura ${r.altura} m`].filter(Boolean).join(' · ') }, { rotulo: 'Geral e mamas', valor: r.exame_fisico }, { rotulo: 'Ginecológico', valor: r.exame_gineco }] },
@@ -1366,7 +1423,7 @@
     main.querySelector('[data-x="novo-doc"]').addEventListener('click', () => dialogoNovoDocumento(CP, { consultaId: C.id, depois: recarregar }));
     main.querySelector('[data-x="pdf-reg"]').addEventListener('click', e => ocupado(e.currentTarget, () => {
       const cl = clinicaPorId(C.clinica_id) || {};
-      const dados = { medico: pick(S.perfil, ['tratamento', 'nome', 'especialidade', 'crm', 'crm_uf', 'rqe', 'telefone', 'email']), clinica: pick(cl, ['nome', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email']), paciente: pick(CP, ['nome', 'nome_social', 'data_nascimento', 'sexo', 'cpf']), data: new Date().toISOString(), tamanho: S.perfil.pdf_tamanho || 'A4', marcaDagua: S.perfil.pdf_marca_dagua !== false, tipo: 'registro', registro: registroParaPDF().slice(1), subtitulo: `${C.tipo} de ${fmtData(C.data)}` };
+      const dados = { medico: pick(S.perfil, ['tratamento', 'nome', 'especialidade', 'crm', 'crm_uf', 'rqe', 'telefone', 'email']), clinica: pick(cl, ['nome', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email']), paciente: pick(CP, ['nome', 'nome_social', 'data_nascimento', 'sexo', 'cpf']), data: new Date().toISOString(), tamanho: S.perfil.pdf_tamanho || 'A4', marcaDagua: S.perfil.pdf_marca_dagua !== false, tipo: 'registro', registro: registroParaPDF().slice(1), subtitulo: `${rotuloDaConsulta().texto} — ${fmtData(C.data)}` };
       return emitirDados(dados, { pacienteId: CP.id, consultaId: C.id, clinicaId: C.clinica_id, paciente: CP, aoEmitir: async () => { await recarregar(); } });
     }));
     main.querySelector('#f-ad').addEventListener('submit', async e => {

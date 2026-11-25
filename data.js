@@ -45,9 +45,9 @@
     const pacientes = {
       async list() {
         const ps = ok(await sb.from('pacientes').select('*, paciente_clinicas(clinica_id)').order('nome'));
-        const cs = ok(await sb.from('consultas').select('paciente_id, data').order('data', { ascending: false }).limit(5000));
-        const ult = {}; cs.forEach(c => { if (!ult[c.paciente_id]) ult[c.paciente_id] = c.data; });
-        return ps.map(p => ({ ...p, clinicas: (p.paciente_clinicas || []).map(x => x.clinica_id), ultima: ult[p.id] || null }));
+        const cs = ok(await sb.from('consultas').select('id, paciente_id, data, tipo, area, status').order('data', { ascending: false }).limit(10000));
+        const por = {}; cs.forEach(c => { (por[c.paciente_id] = por[c.paciente_id] || []).push(c); });
+        return ps.map(p => ({ ...p, clinicas: (p.paciente_clinicas || []).map(x => x.clinica_id), consultas: por[p.id] || [], ultima: (por[p.id] || [])[0] ? por[p.id][0].data : null }));
       },
       async get(id) {
         const p = ok(await sb.from('pacientes').select('*, paciente_clinicas(clinica_id)').eq('id', id).maybeSingle());
@@ -55,7 +55,7 @@
         return { ...p, clinicas: (p.paciente_clinicas || []).map(x => x.clinica_id) };
       },
       async save(p, clinicaIds) {
-        const { id, owner_id, criado_em, atualizado_em, clinicas: _c, paciente_clinicas, ultima, ...rest } = p;
+        const { id, owner_id, criado_em, atualizado_em, clinicas: _c, paciente_clinicas, ultima, consultas: _cs, hist: _h, areaUltima: _a, ...rest } = p;
         if (rest.data_nascimento === '') rest.data_nascimento = null;
         const salvo = id ? ok(await sb.from('pacientes').update(rest).eq('id', id).select().single())
                          : ok(await sb.from('pacientes').insert(rest).select().single());
@@ -274,10 +274,10 @@
       }
     };
     const pacientes = {
-      async list() { const d = load(); const ult = {}; [...d.consultas].sort((a, b) => b.data.localeCompare(a.data)).forEach(c => { if (!ult[c.paciente_id]) ult[c.paciente_id] = c.data; }); return tick(d.pacientes.map(p => ({ ...p, clinicas: d.pc.filter(x => x.paciente_id === p.id).map(x => x.clinica_id), ultima: ult[p.id] || null })).sort(porNome)); },
+      async list() { const d = load(); const por = {}; [...d.consultas].sort((a, b) => b.data.localeCompare(a.data)).forEach(c => { (por[c.paciente_id] = por[c.paciente_id] || []).push({ id: c.id, paciente_id: c.paciente_id, data: c.data, tipo: c.tipo, area: c.area || '', status: c.status }); }); return tick(d.pacientes.map(p => ({ ...p, clinicas: d.pc.filter(x => x.paciente_id === p.id).map(x => x.clinica_id), consultas: por[p.id] || [], ultima: (por[p.id] || [])[0] ? por[p.id][0].data : null })).sort(porNome)); },
       async get(id) { const d = load(); const p = d.pacientes.find(x => x.id === id); return p ? tick({ ...p, clinicas: d.pc.filter(x => x.paciente_id === id).map(x => x.clinica_id) }) : null; },
       async save(p, clinicaIds) {
-        const d = load(); const { clinicas: _c, ultima, ...rest } = p; let salvo;
+        const d = load(); const { clinicas: _c, ultima, consultas: _cs, hist: _h, areaUltima: _a, ...rest } = p; let salvo;
         if (rest.id) { const i = d.pacientes.findIndex(x => x.id === rest.id); d.pacientes[i] = { ...d.pacientes[i], ...rest, atualizado_em: agora() }; salvo = d.pacientes[i]; }
         else { salvo = { sexo: 'F', ...rest, id: uuid(), criado_em: agora() }; d.pacientes.push(salvo); }
         if (clinicaIds) { d.pc = d.pc.filter(x => x.paciente_id !== salvo.id).concat(clinicaIds.map(c => ({ paciente_id: salvo.id, clinica_id: c }))); }
@@ -307,7 +307,7 @@
   }
 
   function seed() {
-    const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid(), k1 = uuid(), k2 = uuid(), k3 = uuid();
+    const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid(), k1 = uuid(), k2 = uuid(), k3 = uuid(), k4 = uuid();
     const MED = { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: '' };
     const CL = { [c1]: { nome: 'Clínica Vida Mulher', endereco: 'Av. Tancredo Neves, 1000, sala 501', bairro: 'Caminho das Árvores', cidade: 'Salvador', uf: 'BA', cep: '41820-020', telefone: '(71) 3000-0000', email: 'contato@vidamulher.exemplo' }, [c2]: { nome: 'Centro Médico Ondina', endereco: 'Rua Exemplo, 45', bairro: 'Ondina', cidade: 'Salvador', uf: 'BA', cep: '40170-000', telefone: '(71) 3111-1111', email: '' } };
     const PAC = { [p1]: { nome: 'Mariana Souza Lima', nome_social: '', data_nascimento: '1991-05-12', sexo: 'F', cpf: '' }, [p2]: { nome: 'Juliana Costa Ferreira', nome_social: '', data_nascimento: '1987-09-30', sexo: 'F', cpf: '' } };
@@ -331,13 +331,15 @@
       ],
       pc: [{ paciente_id: p1, clinica_id: c1 }, { paciente_id: p1, clinica_id: c2 }, { paciente_id: p2, clinica_id: c1 }, { paciente_id: p3, clinica_id: c2 }],
       consultas: [
-        { id: k1, paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', status: 'finalizada', finalizada_em: dias(62),
+        { id: k1, paciente_id: p1, clinica_id: c1, data: dias(62), tipo: 'Primeira consulta', area: 'Fertilidade', status: 'finalizada', finalizada_em: dias(62),
           registro: { motivo: 'Desejo de engravidar.', hda: 'Tentando engravidar há 14 meses, ciclos regulares.', ciclo: 'Regular, 28/5 dias', gestacoes: '0', partos: '0', cesareas: '0', abortos: '0', contracepcao: 'Nenhum há 14 meses', tentante: '14 meses', pa: '110x70', peso: '62', altura: '1,64', exame_fisico: 'Bom estado geral.', exame_gineco: 'Especular sem alterações.', hipotese: 'Infertilidade feminina não especificada', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Solicitada investigação inicial do casal.', retorno: 'Com exames' },
           prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', status: 'rascunho',
+        { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', area: 'Fertilidade', status: 'rascunho',
           registro: { motivo: 'Retorno com exames.', hipotese: '', conduta: '' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
-        { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Consulta', status: 'finalizada', finalizada_em: dias(20),
-          registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', cid_desc: 'Vaginite aguda', conduta: 'Tratamento oral.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] }
+        { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Primeira consulta', area: 'Ginecológica', status: 'finalizada', finalizada_em: dias(20),
+          registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', cid_desc: 'Vaginite aguda', conduta: 'Tratamento oral.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
+        { id: k4, paciente_id: p1, clinica_id: c1, data: dias(30), tipo: 'Retorno', area: 'Fertilidade', status: 'finalizada', finalizada_em: dias(30),
+          registro: { motivo: 'Retorno com exames da investigação.', hipotese: 'Infertilidade feminina', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Indução da ovulação com coito programado.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] }
       ],
       documentos: [
         docSeed(k1, p1, c1, 62, { tipo: 'receita', itens: [{ nome: 'Ácido fólico', apresentacao: '5 mg comprimido', via: 'Oral', quantidade: '1 caixa', posologia: 'Tomar 1 comprimido ao dia, de uso contínuo.', antimicrobiano: false, controlado: false }], orientacoes: 'Retorno com os exames.', incluirOrientacoes: true }, 'Receita', 'Ácido fólico 5 mg comprimido'),

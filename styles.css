@@ -388,3 +388,22 @@ dialog.wide { width: min(980px, calc(100vw - 24px)); }
 .orc-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--s2); padding: var(--s3) var(--s4); border-radius: var(--r-md); background: var(--wine); color: #fff; }
 .orc-total span { font-size: var(--t-xs); letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
 .orc-total b { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; }
+
+/* ---------- área da consulta: selo com ícone ---------- */
+.nome-selo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2); }
+.sticky-ctx .who .nome-selo b { display: inline; }
+.area-selo { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 10px 3px 6px; border-radius: 999px; font: 500 var(--t-xs)/1.25 var(--sans); white-space: normal; background: var(--surface-2); color: var(--wine); }
+.area-selo svg { width: 18px; height: 18px; flex: none; }
+.area-gine  { background: #F3E3E7; color: #6D1A36; }
+.area-obst  { background: #E3F2EA; color: #1F6643; }
+.area-fert  { background: #F7EBDD; color: #84501F; }
+.area-plan  { background: #E9E8F6; color: #45398A; }
+.area-clim  { background: #F3E5F1; color: #74376A; }
+.area-outra { background: #EEE9EB; color: #54454B; }
+.hist-cons { display: grid; gap: 2px; margin-top: 4px; font-size: var(--t-xs); }
+.hist-ult { display: flex; flex-wrap: wrap; gap: 0 var(--s2); align-items: baseline; }
+.hist-ult b { color: var(--ink); font-weight: 600; }
+.nc-dica { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: var(--t-sm); margin: 0; }
+@media (min-width: 1100px) { .filtros-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.pac-head .area-selo, .sticky-ctx .area-selo { font-size: var(--t-sm); padding: 4px 12px 4px 8px; }
+.pac-head .area-selo svg, .sticky-ctx .area-selo svg { width: 20px; height: 20px; }

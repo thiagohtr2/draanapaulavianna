@@ -127,8 +127,14 @@ Para testar o fluxo antes das credenciais da Valid, dá para cadastrar um certif
 “TESTE — SEM VALIDADE”.
 
 ## Pacientes
-Busca por nome, CPF, telefone, e-mail ou convênio; ordenação por nome (A–Z/Z–A), última consulta,
-clínica (agrupado), idade ou cadastro; filtros por clínica, período da última consulta e convênio.
+Cada consulta tem a **área** (ginecológica, obstétrica/pré-natal, fertilidade, planejamento familiar,
+climatério ou outra — cada uma com ícone e cor) e o **atendimento** (primeira consulta, retorno ou
+procedimento). O número do retorno é contado sozinho dentro de cada área (1º, 2º, 3º retorno…), e uma
+nova “primeira consulta” reinicia a contagem. Na lista de pacientes aparece, ao lado do nome, o selo da
+área da última consulta, qual atendimento foi e as consultas anteriores.
+
+Busca por nome, CPF, telefone, e-mail, convênio ou área; ordenação por nome (A–Z/Z–A), última consulta,
+clínica (agrupado), idade ou cadastro; filtros por clínica, período da última consulta, área da última consulta e convênio.
 
 ## Sobre os documentos
 - **Receituário simples**: medicamentos agrupados por via de uso, orientações, assinatura e rodapé da clínica.

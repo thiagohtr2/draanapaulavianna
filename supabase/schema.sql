@@ -412,3 +412,10 @@ create table if not exists public.assinatura_sessoes (
 create index if not exists assinatura_sessoes_owner_idx on public.assinatura_sessoes(owner_id, estado, expira_em desc);
 alter table public.assinatura_sessoes enable row level security;
 revoke all on public.assinatura_sessoes from anon, authenticated;
+
+-- =====================================================================
+--  v5 — área da consulta (ginecológica, obstétrica, fertilidade...).
+--  "tipo" passa a ser o atendimento: Primeira consulta, Retorno ou Procedimento;
+--  o número do retorno é calculado por área no aplicativo.
+-- =====================================================================
+alter table public.consultas add column if not exists area text not null default '';
