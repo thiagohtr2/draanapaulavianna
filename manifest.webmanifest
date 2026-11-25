@@ -1,0 +1,10 @@
+{
+  "name": "Dra. Ana Paula Vianna — Consultório",
+  "short_name": "Dra. Ana Paula",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FBF5F6",
+  "theme_color": "#FBF5F6",
+  "lang": "pt-BR",
+  "icons": [{ "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }, { "src": "assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }]
+}

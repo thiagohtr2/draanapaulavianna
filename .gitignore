@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+node_modules/
+*.zip
+.env
+.env.*
+# backups exportados pelo app contêm dados de pacientes — nunca versionar
+backup-consultorio-*.json
