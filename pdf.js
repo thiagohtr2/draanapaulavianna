@@ -1363,10 +1363,9 @@
     if (!grupos.length) for (let i = 0; i < 4; i++) linhas.push({ tipo: 'vazia', h: 10 });
     if (finaisNoCal.length) linhas.push({ tipo: 'final', h: 10.5 });
     linhas.push({ tipo: 'us', h: 9.2 }, { tipo: 'sangue', h: 9.2 }, { tipo: 'vazia', h: 8 });
-    // os próximos controles cabem embaixo da tabela? as linhas se ajustam ao espaço que sobra
+    // os próximos controles sempre entram embaixo da tabela; as linhas se ajustam ao espaço que sobra
     const faixaH = 28; let corpo = linhas.reduce((a, l) => a + l.h, 0);
-    const comControles = L.bottom - y - headH - corpo - 2 >= faixaH;
-    const livre = L.bottom - y - headH - 2 - (comControles ? faixaH : 0);
+    const livre = L.bottom - y - headH - 2 - faixaH;
     const f = Math.min(1.3, livre / corpo); linhas.forEach(l => { l.h *= f; }); corpo *= f;
     const bh = headH + corpo;
     for (let d = 1; d <= N.dias; d++) {
@@ -1408,7 +1407,7 @@
       yy += ln.h;
     });
     sep(yy);
-    if (comControles) { controlesFaixa(L, N, M, yy + 6, w); L.controlesNaFolha = true; }
+    controlesFaixa(L, N, M, yy + 6, w);
     Object.assign(L, ret); L.y = L.bottom + 1; // o que vem depois começa numa página em pé
   }
 
@@ -1711,9 +1710,12 @@
     const cards = (T.cuidados || []).filter(c => clean(c.titulo) || clean(c.texto));
     if (cards.length) { rotuloSecao(L, 'Cuidados durante o tratamento'); L.y += 1.5; cuidadosLivro(L, cards); }
     if (clean(T.suspensao)) { L.y += 2; suspensaoLivro(L, T.suspensao); }
-    // formato do calendário: 'semanas' (faixas de 7 dias), 'paisagem' (folha deitada) ou 'linhas' (um dia por linha)
-    let formato = clean((dados.ciclo || {}).calendario) || clean(T.calendario) || 'semanas';
-    if ((formato === 'paisagem' && !cabePaisagem(N)) || (formato === 'linhas' && !cabeLinhas(N))) formato = 'semanas';
+    // calendário com todos os dias seguidos numa folha só: folha deitada (padrão, até 18 dias);
+    // ciclos mais longos saem em pé, um dia por linha (até 24); acima disso, em faixas de 7 dias
+    let formato = clean((dados.ciclo || {}).calendario) || clean(T.calendario) || 'paisagem';
+    if (formato === 'paisagem' && !cabePaisagem(N)) formato = cabeLinhas(N) ? 'linhas' : 'semanas';
+    if (formato === 'linhas' && !cabeLinhas(N)) formato = 'semanas';
+    L.controlesNaFolha = formato === 'paisagem'; // na folha deitada os próximos controles vão junto do calendário
     const desenharCal = { semanas: calendarioLivro, paisagem: calendarioPaisagem, linhas: calendarioLinhas }[formato] || calendarioLivro;
     const altCal = formato === 'semanas' ? alturaCalendario(N) : formato === 'linhas' ? alturaLinhas(N) : Infinity;
     // se o calendário não cabe no resto da página e sobra bastante espaço, controles e contatos vêm antes

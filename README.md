@@ -107,6 +107,9 @@ círculo para a paciente marcar), ultrassons e exames de controle, medicações 
 controles, contatos da equipe, recado da médica, **reta final** (bloqueio, gatilho, antibiótico, com dia
 e horário), data e horário do procedimento, jejum calculado e orientações para o dia.
 
+- **Calendário numa folha só, com todos os dias seguidos**: em ciclos de até 18 dias, sai numa folha
+  deitada — os dias lado a lado, uma linha por medicação (a mudança de dose fica na mesma linha) e os
+  próximos controles embaixo. De 19 a 24 dias, sai em pé, um dia por linha. Acima disso, em semanas.
 - **Na consulta de fertilidade** aparece a seção **Ciclo e livreto**: tratamento (FIV/ICSI, congelamento
   de óvulos, inseminação, coito programado, transferência de embrião congelado), início (Dia 01),
   medicações com dose, via, horário e dias (atalhos para Gonal-f, Menopur, Cetrotide…), controles,

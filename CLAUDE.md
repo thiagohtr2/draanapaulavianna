@@ -17,7 +17,9 @@ Usuários: a médica (no consultório, muitas vezes pelo celular). Responder e e
   `#clinicas`, `#valores`, `#producao`, `#perfil`), diálogos com `<dialog>` (`abrirDialogo`).
 - `pdf.js` → `window.DocumentosPDF` (jsPDF): motor de blocos com paginação, fontes embutidas em `assets.js`
   (subconjuntos — evite caracteres fora do Latin-1, ex.: setas e “✓”; desenhe ícones vetoriais).
-  O livreto do ciclo (`gerarLivreto`) tem layout próprio, sempre A4, com ícones em `desenharIcone`.
+  O livreto do ciclo (`gerarLivreto`) tem layout próprio em A4, com ícones em `desenharIcone`. O calendário
+  mostra **todos os dias seguidos numa folha só** (pedido da dona): `calendarioPaisagem` (página deitada,
+  padrão, até 18 dias), `calendarioLinhas` (em pé, um dia por linha, até 24) e `calendarioLivro` (semanas).
   Números em Cormorant parecem letras (“o8hoo”): horários e datas numéricas vão em Jost.
 - `modelos-base.js` → modelos sugeridos (receitas, exames, atestados, textos, folhetos, orçamentos).
 - `vendor/` → jsPDF, supabase-js, qrcode, pdf-lib (este só é carregado ao juntar PDFs).
