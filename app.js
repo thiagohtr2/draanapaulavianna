@@ -85,7 +85,7 @@
     open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
   };
 
-  const MARCA_NOME = 'Dra. Ana Paula Vianna', MARCA_ESP = 'Ginecologia e Fertilidade';
+  const MARCA_NOME = 'Dra. Ana Paula Vianna', MARCA_ESP = 'Ginecologia e Reprodução';
   const marca = (cls, tag = 'p') => `<div class="marca ${cls}"><img src="${A['logo-symbol']}" alt=""><${tag} class="marca-nome">${MARCA_NOME}</${tag}><p class="marca-esp">${MARCA_ESP}</p></div>`;
   const temAlergia = t => !!(t && t.trim() && !/^\s*(nega|sem\s|nenhum|nenhuma|não\s|nao\s)/i.test(t));
 
@@ -256,7 +256,7 @@
                 ${modo === 'entrar' ? `<button class="btn btn-quiet btn-block" type="button" data-modo="recuperar">Esqueci minha senha</button>` : ''}
               </form>`}
           </div>
-          <p class="foot">Ginecologia e Fertilidade · prontuário e receituário</p>
+          <p class="foot">Ginecologia e Reprodução · prontuário e receituário</p>
         </div>
       </main><div class="toasts" id="toasts" aria-live="polite"></div>`;
     const root = document.getElementById('root');
@@ -2794,7 +2794,7 @@
         <div class="grid grid-3">
           ${campo('Tratamento', `<select id="pf-t" name="tratamento">${['Dra.', 'Dr.', ''].map(t => `<option value="${t}" ${t === (p.tratamento ?? 'Dra.') ? 'selected' : ''}>${t || '(nenhum)'}</option>`).join('')}</select>`)}
           <div class="span-2">${campo('Nome profissional', `<input id="pf-n" name="nome" value="${esc(p.nome)}" autocomplete="name">`)}</div>
-          ${campo('Especialidade', `<input id="pf-e" name="especialidade" value="${esc(p.especialidade || 'Ginecologia e Fertilidade')}">`)}
+          ${campo('Especialidade', `<input id="pf-e" name="especialidade" value="${esc(p.especialidade || 'Ginecologia e Reprodução')}">`)}
           ${campo('CRM', `<input id="pf-crm" name="crm" value="${esc(p.crm)}" inputmode="numeric">`)}
           ${campo('UF do CRM', `<select id="pf-uf" name="crm_uf">${UFS.map(u => `<option ${u === (p.crm_uf || 'BA') ? 'selected' : ''}>${u}</option>`).join('')}</select>`)}
           ${campo('RQE', `<input id="pf-rqe" name="rqe" value="${esc(p.rqe)}" inputmode="numeric">`)}

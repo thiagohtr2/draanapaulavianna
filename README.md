@@ -1,6 +1,6 @@
 # Consultório Dra. Ana Paula Vianna
 
-App web de prontuário e receituário (Ginecologia e Fertilidade): login, pacientes por clínica, consultas organizadas, modelos e PDFs com a logomarca.
+App web de prontuário e receituário (Ginecologia e Reprodução): login, pacientes por clínica, consultas organizadas, modelos e PDFs com a logomarca.
 
 Funciona no celular, tablet e computador. Site estático (HTML, CSS e JavaScript) com banco e login no Supabase.
 

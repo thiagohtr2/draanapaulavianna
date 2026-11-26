@@ -1,6 +1,6 @@
 # Consultório Dra. Ana Paula Vianna — instruções para o Claude Code
 
-App web de atendimento da Dra. Ana Paula Vianna (Ginecologia e Fertilidade, Salvador/BA): pacientes em
+App web de atendimento da Dra. Ana Paula Vianna (Ginecologia e Reprodução, Salvador/BA): pacientes em
 várias clínicas, prontuário, documentos em PDF com a logomarca (receita, exames, atestado, folhetos de
 orientação, orçamento), assinatura digital ICP-Brasil, tabela de valores e produção.
 Usuários: a médica (no consultório, muitas vezes pelo celular). Responder e escrever a interface em

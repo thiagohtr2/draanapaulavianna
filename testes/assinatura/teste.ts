@@ -8,7 +8,7 @@ if (entrada) bytes = await Deno.readFile(entrada);
 else { const d = await PDFDocument.create(); const p = d.addPage(); p.drawText('Receita de teste', { x: 50, y: 700, font: await d.embedFont(StandardFonts.Helvetica), size: 20 }); bytes = await d.save(); }
 const cert = certsDoPEM(await Deno.readTextFile(`${dir}/leaf.pem`))[0], ca = certsDoPEM(await Deno.readTextFile(`${dir}/ca.pem`))[0];
 const chave = await crypto.subtle.importKey('pkcs8', pemParaDER(await Deno.readTextFile(`${dir}/leaf.pk8`)) as BufferSource, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
-const prep = await prepararPDF(bytes, { tipo: 'receita', crm: '12345', uf: 'BA', especialidade: 'Ginecologia e Fertilidade', nome: 'Dra. Teste', local: 'Salvador/BA' });
+const prep = await prepararPDF(bytes, { tipo: 'receita', crm: '12345', uf: 'BA', especialidade: 'Ginecologia e Reprodução', nome: 'Dra. Teste', local: 'Salvador/BA' });
 const at = await atributosAssinados(prep.hash, cert);
 const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', chave, at.der as BufferSource));
 await Deno.writeFile(`${dir}/assinado.pdf`, embutir(prep, montarCMS(at.attrs, at.cert, [ca], sig)));

@@ -719,7 +719,7 @@
     return `${pac.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('_')}_${rot}_${dt}.pdf`;
   }
 
-  const medicoDe = m => Object.assign({}, m || {}, { nomeCompleto: [clean((m || {}).tratamento), clean((m || {}).nome)].filter(Boolean).join(' ') || 'Dra. Ana Paula Vianna', especialidade: clean((m || {}).especialidade) || 'Ginecologia e Fertilidade' });
+  const medicoDe = m => Object.assign({}, m || {}, { nomeCompleto: [clean((m || {}).tratamento), clean((m || {}).nome)].filter(Boolean).join(' ') || 'Dra. Ana Paula Vianna', especialidade: clean((m || {}).especialidade) || 'Ginecologia e Reprodução' });
 
   function gerar(dados) {
     if (dados.tipo === 'livreto') return gerarLivreto(dados);

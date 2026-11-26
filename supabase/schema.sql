@@ -469,3 +469,9 @@ alter table public.documentos add constraint documentos_tipo_check
 alter table public.modelos drop constraint if exists modelos_tipo_check;
 alter table public.modelos add constraint modelos_tipo_check
   check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto','ciclo'));
+-- =====================================================================
+--  v9 — a especialidade da marca passa a ser "Ginecologia e Reprodução".
+--  (O perfil que já existia foi atualizado uma vez, na migração aplicada;
+--   aqui fica só o novo padrão, para não sobrescrever o que a médica escolher no Perfil.)
+-- =====================================================================
+alter table public.perfis alter column especialidade set default 'Ginecologia e Reprodução';

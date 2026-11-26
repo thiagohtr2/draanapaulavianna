@@ -329,7 +329,7 @@
 
   function seed() {
     const c1 = uuid(), c2 = uuid(), p1 = uuid(), p2 = uuid(), p3 = uuid(), k1 = uuid(), k2 = uuid(), k3 = uuid(), k4 = uuid();
-    const MED = { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: '' };
+    const MED = { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Reprodução', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: '' };
     const CL = { [c1]: { nome: 'Clínica Vida Mulher', endereco: 'Av. Tancredo Neves, 1000, sala 501', bairro: 'Caminho das Árvores', cidade: 'Salvador', uf: 'BA', cep: '41820-020', telefone: '(71) 3000-0000', email: 'contato@vidamulher.exemplo' }, [c2]: { nome: 'Centro Médico Ondina', endereco: 'Rua Exemplo, 45', bairro: 'Ondina', cidade: 'Salvador', uf: 'BA', cep: '40170-000', telefone: '(71) 3111-1111', email: '' } };
     const PAC = { [p1]: { nome: 'Mariana Souza Lima', nome_social: '', data_nascimento: '1991-05-12', sexo: 'F', cpf: '' }, [p2]: { nome: 'Juliana Costa Ferreira', nome_social: '', data_nascimento: '1987-09-30', sexo: 'F', cpf: '' } };
     const docSeed = (consulta, pac, cl, n, extra, titulo, resumo) => {
@@ -357,7 +357,7 @@
       procedimento: { data: diaCiclo(12), hora: '08:00' }
     };
     return {
-      perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true, modelos_iniciados: true },
+      perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Reprodução', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true, modelos_iniciados: true },
       clinicas: [
         { id: c1, nome: 'Clínica Vida Mulher', endereco: 'Av. Tancredo Neves, 1000, sala 501', bairro: 'Caminho das Árvores', cidade: 'Salvador', uf: 'BA', cep: '41820-020', telefone: '(71) 3000-0000', email: 'contato@vidamulher.exemplo', ativa: true },
         { id: c2, nome: 'Centro Médico Ondina', endereco: 'Rua Exemplo, 45', bairro: 'Ondina', cidade: 'Salvador', uf: 'BA', cep: '40170-000', telefone: '(71) 3111-1111', email: '', ativa: true }
