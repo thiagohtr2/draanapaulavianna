@@ -53,7 +53,7 @@ async def main(larguras):
                 ps = await pg.evaluate("DB.pacientes.list()")
                 for r in ['#inicio', '#pacientes', '#modelos', '#clinicas', '#perfil', '#valores', '#producao', '#paciente-' + ps[2]['id'], '#consulta-' + rasc, '#consulta-' + fin]:
                     await pg.goto(BASE + r); await pg.wait_for_timeout(400); await chk(f'{w} {r[:20]}')
-                for tm in ['medicamentos', 'prescricao', 'exames', 'atestado', 'orientacao', 'orcamento', 'texto']:
+                for tm in ['medicamentos', 'prescricao', 'exames', 'atestado', 'orientacao', 'livreto', 'orcamento', 'texto']:
                     await pg.goto(BASE + '#modelos'); await pg.wait_for_timeout(250); await pg.click(f'[data-tm="{tm}"]'); await pg.wait_for_timeout(200); await chk(f'{w} modelos-{tm}')
                     if tm != 'medicamentos':
                         await pg.click('[data-mid] >> nth=0'); await pg.wait_for_timeout(300); await chk(f'{w} dlg-modelo-{tm}', 'dialog'); await esc(); await pg.wait_for_timeout(150)
@@ -73,6 +73,11 @@ async def main(larguras):
                 await pg.click('[data-x="doc-novo"][data-tipo="receita"]'); await pg.wait_for_timeout(250)
                 if await pg.locator('dialog[open]').count(): await pg.click('dialog[open] .btn-danger'); await pg.wait_for_timeout(250)
                 await pg.check('#doc-editor [data-e="assinar"]'); await chk(f'{w} editor-receita-assinar', '#doc-editor')
+                await chk(f'{w} ciclo-e-livreto', '#s-ciclo')
+                pac = await pg.evaluate(f"DB.consultas.get('{rasc}').then(c=>c.paciente_id)")
+                await pg.goto(BASE + '#paciente-' + pac); await pg.wait_for_timeout(400)
+                await pg.click('[data-aba="docs"]'); await pg.wait_for_timeout(200); await pg.click('[data-x="novo-doc"]'); await pg.wait_for_timeout(250); await pg.click('dialog[open] [data-nd="livreto"]'); await pg.wait_for_timeout(600)
+                await chk(f'{w} dlg-livreto', 'dialog'); await esc(); await pg.wait_for_timeout(150)
                 await pg.goto(BASE + '#paciente-' + ps[2]['id']); await pg.wait_for_timeout(400)
                 await pg.click('main .card [data-x="nova"]'); await pg.wait_for_timeout(500); await chk(f'{w} dlg-nova-consulta', 'dialog'); await esc(); await pg.wait_for_timeout(150)
                 await pg.click('[data-aba="docs"]'); await pg.wait_for_timeout(200); await chk(f'{w} ficha-documentos')

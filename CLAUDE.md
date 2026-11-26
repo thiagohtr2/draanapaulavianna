@@ -17,6 +17,8 @@ Usuários: a médica (no consultório, muitas vezes pelo celular). Responder e e
   `#clinicas`, `#valores`, `#producao`, `#perfil`), diálogos com `<dialog>` (`abrirDialogo`).
 - `pdf.js` → `window.DocumentosPDF` (jsPDF): motor de blocos com paginação, fontes embutidas em `assets.js`
   (subconjuntos — evite caracteres fora do Latin-1, ex.: setas e “✓”; desenhe ícones vetoriais).
+  O livreto do ciclo (`gerarLivreto`) tem layout próprio, sempre A4, com ícones em `desenharIcone`.
+  Números em Cormorant parecem letras (“o8hoo”): horários e datas numéricas vão em Jost.
 - `modelos-base.js` → modelos sugeridos (receitas, exames, atestados, textos, folhetos, orçamentos).
 - `vendor/` → jsPDF, supabase-js, qrcode, pdf-lib (este só é carregado ao juntar PDFs).
 - `supabase/schema.sql` → banco completo e **idempotente** (rodar de novo não quebra). Cada mudança de banco
@@ -39,6 +41,10 @@ Usuários: a médica (no consultório, muitas vezes pelo celular). Responder e e
   separada do atendimento (Primeira consulta / Retorno / Procedimento); o nº do retorno é **calculado** por
   área (`rotulosConsultas`), nunca gravado.
 - Nomes de arquivo: `Primeiro_Ultimo_Documento_dd-mm-aaaa.pdf` (`DocumentosPDF.nomeDoArquivo`).
+- Livreto do ciclo (fertilidade): o ciclo fica em `consultas.registro.ciclo_tratamento` (**não** em
+  `registro.ciclo`, que é o ciclo menstrual) e é copiado para a próxima consulta de fertilidade enquanto
+  estiver em andamento (`cicloAtivo`). Os textos fixos são modelos do tipo `livreto`; o PDF emitido é um
+  documento `livreto` (dados = modelo + ciclo, para regerar igual). Telefones/e-mail da equipe ficam no modelo.
 
 ## Interface — exigências da dona do projeto
 - Responsivo de 320 a 1920 px, mobile-first, alvos de toque ≥ 44 px, acessível (rótulos, foco, contraste).
@@ -48,7 +54,7 @@ Usuários: a médica (no consultório, muitas vezes pelo celular). Responder e e
 ## Testes — rode antes de cada commit
 ```bash
 pip install playwright pyhanko pyhanko-certvalidator pillow && python -m playwright install chromium   # uma vez
-python testes/fluxos.py            # 60 verificações de ponta a ponta (modo demonstração, 390 e 1366 px)
+python testes/fluxos.py            # 82 verificações de ponta a ponta (modo demonstração, 390 e 1366 px)
 python testes/sobreposicao.py      # sobreposição/corte/rolagem horizontal em 7 larguras — tem que dar 0
 bash testes/assinatura/rodar.sh    # assinatura digital validada pelo pyHanko (precisa de deno e openssl)
 ```
@@ -64,7 +70,8 @@ Mudou o banco? Valide o `schema.sql` (idempotente) e aplique a migração pelo M
   (e, opcional, `ASSINATURA_TESTE_CHAVE`/`ASSINATURA_TESTE_CERT`).
 
 ## Pendências conhecidas
-- Livreto do ciclo de tratamento (aguarda os textos-modelo que a família vai enviar).
+- Livreto do ciclo: a médica precisa preencher em Modelos → Livreto do ciclo os telefones, o WhatsApp e o
+  e-mail da equipe, e revisar os textos clínicos sugeridos (tabela de suspensão antes da sedação, jejum).
 - Emissão de nota fiscal da PJ (adiada).
 - Credenciais do VIDaaS (Valid) e da Resend; ligar a proteção contra senhas vazadas no Supabase Auth.
 

@@ -99,6 +99,30 @@ Marcação do texto (uma instrução por linha):
 | `{H-36}` `{H+0}` | dia e hora relativos (ex.: “qui., 26/11, 21h00”) |
 | `{data_ref}` `{hora_ref}` | a própria data e hora de referência |
 
+## Livreto do ciclo (fertilidade)
+O guia da paciente para o tratamento, em PDF com a identidade visual: capa ilustrada (“Jornada do
+tratamento”), boas-vindas, etapas do ciclo com ícones, cuidados durante o tratamento, medicações a
+suspender antes da sedação, **calendário de medicações com as datas do ciclo** (cada aplicação com um
+círculo para a paciente marcar), ultrassons e exames de controle, medicações compradas, próximos
+controles, contatos da equipe, recado da médica, **reta final** (bloqueio, gatilho, antibiótico, com dia
+e horário), data e horário do procedimento, jejum calculado e orientações para o dia.
+
+- **Na consulta de fertilidade** aparece a seção **Ciclo e livreto**: tratamento (FIV/ICSI, congelamento
+  de óvulos, inseminação, coito programado, transferência de embrião congelado), início (Dia 01),
+  medicações com dose, via, horário e dias (atalhos para Gonal-f, Menopur, Cetrotide…), controles,
+  data do procedimento e medicações da reta final. **Gatilho 36 h antes** calcula o gatilho a partir da
+  punção (e, se estiverem sem data, o bloqueio no mesmo dia e o antibiótico na véspera).
+- **Salvar e gerar livreto** guarda o PDF na ficha (aba Documentos), pronto para enviar por WhatsApp ou
+  e-mail. **Montar receita com estas medicações** cria a receita com as mesmas medicações e posologias.
+- O ciclo fica no prontuário e **passa sozinho para a próxima consulta de fertilidade** (enquanto o ciclo
+  estiver em andamento): nos controles, é só ajustar a dose e gerar o livreto de novo. “Começar um ciclo
+  novo” limpa os dados trazidos.
+- Também dá para gerar pela ficha: **Novo documento → Livreto do ciclo** (já vem com o ciclo mais recente).
+  Sem data de início, o calendário sai em branco, para preencher à mão.
+- **Modelos → Livreto do ciclo**: os textos fixos de cada tratamento (capa, etapas, cuidados, tabela de
+  suspensão, contatos, preparo, jejum, orientações do dia). Vêm 4 sugeridos — **preencha os telefones,
+  WhatsApp e e-mail da equipe** e revise os textos clínicos. O modelo é escolhido pelo tratamento.
+
 ## Orçamentos
 **Novo documento → Orçamento → Usar orçamento padrão**: itens agrupados (honorários médicos,
 procedimentos, laboratório, medicações estimadas), desconto, formas de pagamento, o que inclui e o que
@@ -170,7 +194,7 @@ periodicamente, ou assine o plano Pro (backup diário).
 
 ## Estrutura
 - `index.html`, `styles.css`, `app.js` — interface
-- `pdf.js` — geração dos documentos em PDF (receituário, exames, atestado, folhetos, orçamento, registro)
+- `pdf.js` — geração dos documentos em PDF (receituário, exames, atestado, folhetos, orçamento, registro, livreto do ciclo)
 - `data.js` — acesso ao banco (Supabase) ou modo demonstração
 - `config.js` — URL e chave pública do Supabase
 - `modelos-base.js` — modelos básicos de atestado

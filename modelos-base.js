@@ -14,6 +14,39 @@
   const orc = (nome, titulo, itens, inclui, naoInclui) => ({ tipo: 'orcamento', nome, conteudo: { sugerido: S, titulo,
     itens: itens.map(([grupo, descricao, detalhe]) => ({ grupo, descricao, detalhe, valor: null, incluso: false })), desconto: 0,
     pagamento: 'PIX ou transferência, à vista.\nCartão de crédito em até __ vezes.', inclui, nao_inclui: naoInclui, observacoes: '', validade_dias: 15, ciencia: true } });
+  // Livreto do ciclo: textos fixos do livreto; as datas e medicações vêm do ciclo de cada paciente.
+  // {paciente} = primeiro nome. Telefones e e-mail de contato ficam em branco para a médica preencher.
+  const CUIDADO = {
+    atividade: { icone: 'atividade', titulo: 'Atividade física', texto: 'A partir do 5º dia de estimulação, os ovários ficam maiores e mais sensíveis. Prefira caminhadas leves e evite atividades de impacto: corrida, crossfit, ciclismo, aulas aeróbicas, pilates e fisioterapia.' },
+    rotina: { icone: 'rotina', titulo: 'Vida normal', texto: 'No início do tratamento você pode manter a rotina: trabalhar, dirigir e ter relações sexuais, salvo orientação diferente.' },
+    alcool: { icone: 'alcool', titulo: 'Álcool e cigarro', texto: 'Não consuma bebidas alcoólicas nem fume durante o tratamento: eles prejudicam a resposta às medicações e a qualidade dos óvulos.' },
+    esqueceu: { icone: 'alarme', titulo: 'Esqueceu uma aplicação?', texto: 'Não aplique duas doses juntas. Avise a equipe assim que perceber, pelos contatos deste livreto, para receber a orientação certa.' },
+    reacao: { icone: 'gelo', titulo: 'Reação no local da aplicação', texto: 'Vermelhidão, um pequeno inchaço ou coceira podem acontecer. Uma compressa fria por alguns minutos ajuda. Se não melhorar, entre em contato.' },
+    estetica: { icone: 'estetica', titulo: 'Estética, dentista e cirurgias', texto: 'Durante a estimulação, adie procedimentos estéticos, tratamentos dentários e pequenas cirurgias. Tintura e química no cabelo estão liberadas.' },
+    guardar: { icone: 'geladeira', titulo: 'Como guardar as medicações', texto: 'Siga a orientação da farmácia: algumas ficam na geladeira (nunca no congelador) e outras em temperatura ambiente. No transporte, use bolsa térmica.' },
+    alerta: { icone: 'aviso', titulo: 'Sinais de alerta', texto: 'Procure a equipe se tiver dor abdominal forte, barriga muito inchada, falta de ar, vômitos ou sangramento intenso.' }
+  };
+  const SUSPENSAO = [
+    'Algumas medicações precisam ser suspensas antes de procedimentos com sedação. Avise a equipe se você usa alguma delas (tempo mínimo de suspensão antes do procedimento):',
+    '## Análogos do GLP-1 · controle do diabetes ou emagrecimento · reduzir o risco de aspiração pulmonar',
+    'Lixisenatida | 1 dia antes',
+    'Liraglutida (Victoza®, Saxenda®) | 2 dias antes',
+    'Tirzepatida (Mounjaro®) | 15 dias antes',
+    'Semaglutida (Ozempic®, Rybelsus®, Wegovy®) | 21 dias antes',
+    '## Inibidores da SGLT2 · controle do diabetes · reduzir o risco de cetoacidose',
+    'Dapagliflozina (Forxiga®) | 2 dias antes',
+    'Empagliflozina (Jardiance®) | 2 dias antes',
+    '* Se você tem diabetes, converse com o seu endocrinologista sobre como substituir a medicação nesse período.'
+  ].join('\n');
+  const liv = (nome, protocolos, c) => ({ tipo: 'livreto', nome, conteudo: {
+    sugerido: S, protocolos, titulo: 'Jornada do tratamento', subtitulo: 'Seu guia do ciclo, passo a passo',
+    boas_vindas_titulo: c.boas_vindas_titulo, boas_vindas: c.boas_vindas, etapas: c.etapas.join('\n'),
+    cuidados: c.cuidados.map(x => ({ ...x })), suspensao: c.suspensao || '',
+    lembretes: 'Aplique as medicações sempre no mesmo horário, de preferência à noite. Em caso de dúvida sobre a aplicação, dor ou sangramento, fale com a equipe.',
+    contatos: { clinica_tel: '', clinica_horario: 'Segunda a sexta, em horário comercial', whatsapp: '', whatsapp_horario: 'Mensagens em horário comercial', emergencia_tel: '', emergencia_horario: 'Noites, fins de semana e feriados', email_exames: '', obs: 'Se você faz os controles fora de Salvador, envie as ultrassonografias por e-mail no mesmo dia do exame e avise a equipe.' },
+    procedimento: { ...c.procedimento, dia: c.procedimento.dia.join('\n') },
+    encerramento: 'Cada etapa deste caminho é cuidada com atenção e carinho. Conte com a nossa equipe sempre que precisar.'
+  } });
 
   window.MODELOS_BASE = [
     /* ---------- Textos padrão de cada campo ---------- */
@@ -179,6 +212,92 @@
       ['Laboratório', 'Laboratório de embriologia (FIV/ICSI e cultivo)', ''],
       ['Laboratório', 'Congelamento de embriões excedentes', 'Se houver'],
       ['Medicações (estimativa)', 'Medicações da estimulação ovariana', 'Varia com a dose e a resposta; compra direta na farmácia']
-    ], 'Acompanhamento pelo WhatsApp durante o ciclo', 'Taxa anual de armazenamento de embriões congelados\nExames laboratoriais e beta-hCG')
+    ], 'Acompanhamento pelo WhatsApp durante o ciclo', 'Taxa anual de armazenamento de embriões congelados\nExames laboratoriais e beta-hCG'),
+
+    /* ---------- Livretos do ciclo de tratamento (fertilidade) ---------- */
+    liv('Livreto do ciclo — FIV / ICSI', ['FIV / ICSI', 'Congelamento de óvulos'], {
+      boas_vindas_titulo: 'Que bom caminhar com você',
+      boas_vindas: 'Querida {paciente}, este livreto acompanha você em cada etapa do tratamento. Aqui estão o seu calendário de medicações, as datas dos controles, o preparo para a punção e os cuidados do dia a dia.\nGuarde-o com você, marque cada aplicação feita e traga-o a todos os controles. Se surgir qualquer dúvida, fale com a nossa equipe: estamos aqui para cuidar de você.',
+      etapas: ['Consulta e planejamento', 'Exames e preparo', 'Estimulação ovariana', 'Ultrassons de controle', 'Indução final (gatilho)', 'Punção ovariana', 'Laboratório: fertilização e cultivo', 'Transferência embrionária', 'Teste de gravidez (beta-hCG)'],
+      cuidados: [CUIDADO.atividade, CUIDADO.rotina, CUIDADO.alcool, CUIDADO.esqueceu, CUIDADO.reacao, CUIDADO.estetica, CUIDADO.guardar, CUIDADO.alerta],
+      suspensao: SUSPENSAO,
+      procedimento: {
+        titulo: 'Punção ovariana', rotulo: 'Punção', antecedencia: 30,
+        preparo: 'Para a punção, o termo de consentimento precisa estar assinado e entregue até o dia do procedimento, e as sorologias atualizadas (feitas há menos de 3 meses).',
+        alerta: 'Siga os horários à risca e coloque alarmes no celular: o horário do gatilho é calculado para a punção e não pode atrasar.',
+        jejum: 'Fique em jejum absoluto a partir de {H-8} (8 horas antes da punção): não coma nem beba nada — nem água, chá, suco, balas ou chiclete.',
+        dia_titulo: 'No dia da punção',
+        dia: [
+          '> A sedação é feita na veia. Depois da punção, você fica em observação por cerca de 20 a 30 minutos e recebe as orientações de alta.',
+          '+ Venha com um acompanhante adulto: a alta só é dada com acompanhante.',
+          '+ Se for preciso colher o sêmen no mesmo dia, o parceiro deve fazer abstinência sexual de 2 a 5 dias.',
+          '+ Avise a equipe sobre alergias, doenças e medicações em uso.',
+          '+ Remédios de uso contínuo, como os de pressão, podem ser tomados com um pequeno gole de água.',
+          '+ Venha com roupas confortáveis.',
+          'x Não beba álcool nem fume nas 24 horas antes do procedimento.',
+          'x Retire próteses dentárias móveis, aparelhos auditivos, óculos ou lentes de contato, joias e piercings.',
+          'x Não use maquiagem, cremes, óleos, hidratantes, perfume ou qualquer produto com cheiro.',
+          'x Retire unhas de gel, se usar.',
+          'x Não programe viagens para o dia do procedimento e não dirija nas 24 horas seguintes à sedação.'
+        ]
+      }
+    }),
+    liv('Livreto do ciclo — Inseminação intrauterina', ['Inseminação intrauterina'], {
+      boas_vindas_titulo: 'Que bom caminhar com você',
+      boas_vindas: 'Querida {paciente}, este livreto acompanha você em cada etapa da inseminação. Aqui estão o seu calendário de medicações, as datas dos controles, o preparo para o procedimento e os cuidados do dia a dia.\nMarque cada aplicação feita e traga o livreto a todos os controles. Se surgir qualquer dúvida, fale com a nossa equipe.',
+      etapas: ['Consulta e planejamento', 'Exames e preparo', 'Estímulo da ovulação', 'Ultrassons de controle', 'Indução da ovulação (gatilho)', 'Inseminação', 'Suporte da fase lútea', 'Teste de gravidez (beta-hCG)'],
+      cuidados: [{ icone: 'atividade', titulo: 'Atividade física', texto: 'Atividades leves estão liberadas. Quando os folículos estiverem maiores, evite exercícios de impacto, conforme a orientação dos controles.' }, CUIDADO.rotina, CUIDADO.alcool, CUIDADO.esqueceu, CUIDADO.reacao, CUIDADO.guardar, CUIDADO.alerta],
+      procedimento: {
+        titulo: 'Inseminação intrauterina', rotulo: 'Inseminação', antecedencia: 15,
+        preparo: 'O parceiro deve fazer abstinência sexual de 2 a 5 dias antes da coleta do sêmen. A coleta é feita no laboratório, em geral cerca de 2 horas antes da inseminação — confirme o horário com a equipe.',
+        alerta: 'Siga os horários à risca e coloque alarmes no celular: o horário do gatilho é calculado para a inseminação.',
+        jejum: '',
+        dia_titulo: 'No dia da inseminação',
+        dia: [
+          '> A inseminação é rápida e costuma ser indolor, parecida com a coleta do preventivo. Não precisa de jejum nem de anestesia.',
+          '+ Depois do procedimento você pode retomar a rotina normalmente.',
+          '+ Use a progesterona exatamente como prescrita, se ela estiver na sua receita.',
+          'x Evite lubrificantes comuns: eles prejudicam os espermatozoides.',
+          'x Evite álcool e cigarro durante todo o tratamento.'
+        ]
+      }
+    }),
+    liv('Livreto do ciclo — Coito programado', ['Coito programado'], {
+      boas_vindas_titulo: 'Que bom caminhar com você',
+      boas_vindas: 'Querida {paciente}, este livreto reúne o seu calendário de medicações, as datas dos controles e o dia indicado para as relações. Marque cada aplicação feita e traga o livreto aos controles.',
+      etapas: ['Consulta e planejamento', 'Estímulo da ovulação', 'Ultrassons de controle', 'Indução da ovulação (gatilho)', 'Relações programadas', 'Teste de gravidez (beta-hCG)'],
+      cuidados: [CUIDADO.rotina, CUIDADO.alcool, CUIDADO.esqueceu, CUIDADO.reacao, CUIDADO.guardar, CUIDADO.alerta],
+      procedimento: {
+        titulo: 'Relações programadas', rotulo: 'Relação', antecedencia: 0,
+        preparo: 'As relações sexuais devem acontecer na data indicada abaixo, contada a partir do gatilho. Siga também a orientação sobre os dias seguintes.',
+        alerta: 'Coloque um alarme para o horário do gatilho: ele marca o momento da ovulação.',
+        jejum: '', dia_titulo: 'Dicas para o período fértil',
+        dia: [
+          '+ Mantenha relações na data indicada e, se não houver outra orientação, também no dia seguinte.',
+          '+ Use a progesterona exatamente como prescrita, se ela estiver na sua receita.',
+          'x Evite lubrificantes comuns: eles prejudicam os espermatozoides.',
+          'x Evite álcool e cigarro durante todo o tratamento.'
+        ]
+      }
+    }),
+    liv('Livreto do ciclo — Transferência de embrião congelado', ['Transferência de embrião congelado'], {
+      boas_vindas_titulo: 'Que bom caminhar com você',
+      boas_vindas: 'Querida {paciente}, este livreto acompanha o preparo do endométrio para a transferência do embrião. Aqui estão o seu calendário de medicações, as datas dos controles e as orientações para o dia da transferência.',
+      etapas: ['Consulta e planejamento', 'Preparo do endométrio', 'Ultrassons de controle', 'Início da progesterona', 'Transferência embrionária', 'Teste de gravidez (beta-hCG)'],
+      cuidados: [CUIDADO.rotina, CUIDADO.alcool, CUIDADO.esqueceu, CUIDADO.guardar, CUIDADO.alerta],
+      procedimento: {
+        titulo: 'Transferência embrionária', rotulo: 'Transferência', antecedencia: 30,
+        preparo: 'A transferência é rápida, feita sem anestesia e guiada por ultrassom. Em geral, a bexiga precisa estar moderadamente cheia: siga a orientação da equipe sobre quanta água beber antes.',
+        alerta: 'Não interrompa o estradiol nem a progesterona sem falar com a equipe.',
+        jejum: '', dia_titulo: 'No dia da transferência',
+        dia: [
+          '> Depois da transferência você pode retomar atividades leves. Repouso absoluto não é necessário.',
+          '+ Venha com roupas confortáveis.',
+          '+ Mantenha a progesterona e as demais medicações exatamente como prescritas.',
+          'x Não use perfume ou cremes com cheiro no dia.',
+          'x Evite álcool e cigarro durante todo o tratamento.'
+        ]
+      }
+    })
   ];
 })();

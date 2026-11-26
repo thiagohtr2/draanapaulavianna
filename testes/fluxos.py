@@ -101,8 +101,41 @@ async def rodar(b, BASE, W):
     alertas = ' '.join(await pg.eval_on_selector_all('dialog[open] .alert', 'e=>e.map(x=>x.textContent)'))
     T.check('TESTE' in alertas and 'Código de acesso' in alertas, 'receita assinada (teste) com código de acesso'); await fechar(pg)
 
+    # ---- ciclo de fertilidade e livreto da paciente
+    await pg.goto(BASE + '#consulta-' + rasc); await pg.wait_for_timeout(900)
+    T.check(await pg.locator('#s-ciclo').is_visible() and await pg.locator('#ciclo-corpo [data-cm][data-k="nome"]').count() == 3, 'consulta de fertilidade mostra o ciclo (3 medicações)')
+    await pg.click('#ciclo-corpo [data-cadd="Progesterona"]'); await pg.wait_for_timeout(1600)
+    n = await pg.evaluate(f"DB.consultas.get('{rasc}').then(c=>c.registro.ciclo_tratamento.meds.length)")
+    T.check(n == 4, 'medicação do ciclo salva no prontuário', str(n))
+    await pg.fill('#cic-ph', '09:00'); await pg.click('#ciclo-corpo [data-cx="gatilho"]'); await pg.wait_for_timeout(300)
+    hg = await pg.evaluate("[...document.querySelectorAll('#ciclo-corpo [data-cf][data-k=\"med\"]')].map(i => [i.value, document.querySelector('#cic-fh-' + i.dataset.cf).value]).find(x => /Ovidrel/.test(x[0]))")
+    T.check(hg and hg[1] == '21:00', 'gatilho calculado 36 h antes da punção', str(hg))
+    await pg.click('[data-x="livreto-previa"]')
+    T.check((await dlg_titulo(pg) or '').startswith('Pré-visualização do livreto'), 'pré-visualizar livreto'); await fechar(pg)
+    antes = await pg.locator('#docs-lista [data-doc]').count()
+    await pg.click('[data-x="livreto-emitir"]'); await pg.wait_for_timeout(1200)
+    T.check((await dlg_titulo(pg) or '') == 'Documento salvo', 'livreto salvo e gerado'); await fechar(pg)
+    T.check(await pg.locator('#docs-lista [data-doc]').count() == antes + 1 and 'Livreto do ciclo' in await pg.text_content('#docs-lista'), 'livreto na lista de documentos da consulta')
+    await pg.click('[data-x="ciclo-receita"]'); await pg.wait_for_timeout(500)
+    T.check(await pg.locator('#doc-editor .rx-list > li').count() == 7, 'receita montada com as medicações do ciclo', str(await pg.locator('#doc-editor .rx-list > li').count()))
+    await pg.click('#doc-editor [data-ed="descartar"]'); await pg.wait_for_timeout(300)
+    if await pg.locator('dialog[open] [data-ok]').count(): await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(300)
+    # nova consulta de fertilidade traz o ciclo em andamento
+    pac = await pg.evaluate(f"DB.consultas.get('{rasc}').then(c=>c.paciente_id)")
+    await pg.goto(BASE + '#paciente-' + pac); await pg.wait_for_timeout(600)
+    await pg.click('main .card [data-x="nova"]'); await pg.wait_for_timeout(600)
+    await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(1500)
+    T.check(await pg.locator('[data-ciclo-copia]').count() == 1 and await pg.locator('#ciclo-corpo [data-cm][data-k="nome"]').count() == 4, 'nova consulta de fertilidade traz o ciclo anterior')
+    await pg.select_option('#c-area', 'Ginecológica'); await pg.wait_for_timeout(300)
+    T.check(not await pg.locator('#s-ciclo').is_visible(), 'ciclo some em consulta que não é de fertilidade')
+    # livreto pela ficha, com o ciclo mais recente
+    await pg.goto(BASE + '#paciente-' + pac); await pg.wait_for_timeout(600)
+    await pg.click('[data-aba="docs"]'); await pg.wait_for_timeout(200); await pg.click('[data-x="novo-doc"]'); await pg.wait_for_timeout(300); await pg.click('dialog[open] [data-nd="livreto"]'); await pg.wait_for_timeout(700)
+    T.check(await pg.locator('#nd-editor [data-cm][data-k="nome"]').count() == 4, 'livreto pela ficha já vem com o ciclo')
+    await fechar(pg)
+
     # ---- modelos: “Ver PDF”
-    for tm in ['prescricao', 'exames', 'atestado', 'orientacao', 'orcamento']:
+    for tm in ['prescricao', 'exames', 'atestado', 'orientacao', 'livreto', 'orcamento']:
         await pg.goto(BASE + '#modelos'); await pg.wait_for_timeout(300); await pg.click(f'[data-tm="{tm}"]')
         await pg.click('[data-mid] >> nth=0'); await pg.wait_for_timeout(300); await pg.click('dialog[open] [data-m="prev"]')
         T.check(await pg.locator('dialog[open] iframe, dialog[open] a[download], dialog[open] [data-save]').count() > 0 or bool(await dlg_titulo(pg)), f'“Ver PDF” do modelo ({tm})')

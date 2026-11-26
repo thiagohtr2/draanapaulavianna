@@ -339,6 +339,23 @@
       return { id: uuid(), paciente_id: pac, consulta_id: consulta, clinica_id: cl, tipo: extra.tipo, titulo, nome_arquivo: nome, emitido_em: data, dados, resumo, arquivo_path: null, paginas: extra.itens && extra.itens.some(i => i.antimicrobiano) ? 2 : 1, anulado_em: null, motivo_anulacao: '' };
     };
     const dias = n => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(9 + (n % 7), 30, 0, 0); return d.toISOString(); };
+    // dia do ciclo de exemplo (AAAA-MM-DD): o Dia 01 foi há 3 dias
+    const diaCiclo = n => { const d = new Date(); d.setDate(d.getDate() - 3 + n - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const CICLO = {
+      protocolo: 'FIV / ICSI', inicio: diaCiclo(1), dias: '', nhc: '', modelo_id: '', obs: 'Traga este livreto e os exames de sangue a todos os controles.',
+      meds: [
+        { nome: 'Gonal-f', dose: '225 UI', via: 'Subcutânea', horario: '20:00', de: 1, ate: 10 },
+        { nome: 'Menopur', dose: '75 UI', via: 'Subcutânea', horario: '20:00', de: 1, ate: 10 },
+        { nome: 'Cetrotide', dose: '0,25 mg', via: 'Subcutânea', horario: '08:00', de: 6, ate: 9 }
+      ],
+      controles: [{ data: diaCiclo(5), hora: '08:30', us: true, sangue: true }, { data: diaCiclo(7), hora: '08:30', us: true, sangue: false }, { data: diaCiclo(9), hora: '08:00', us: true, sangue: true }],
+      final: [
+        { med: 'Cetrotide 0,25 mg', via: 'Subcutânea', data: diaCiclo(10), hora: '08:00' },
+        { med: 'Ovidrel 250 mcg', via: 'Subcutânea', data: diaCiclo(10), hora: '20:00' },
+        { med: 'Azitromicina 1 g (1 comprimido) ou 500 mg (2 comprimidos), após o jantar', via: 'Oral', data: diaCiclo(11), hora: '20:00' }
+      ],
+      procedimento: { data: diaCiclo(12), hora: '08:00' }
+    };
     return {
       perfil: { tratamento: 'Dra.', nome: 'Ana Paula Vianna', especialidade: 'Ginecologia e Fertilidade', crm: '00000', crm_uf: 'BA', rqe: '0000', telefone: '', email: 'demonstracao@exemplo.com', cidade: 'Salvador', pdf_tamanho: 'A4', pdf_marca_dagua: true, modelos_iniciados: true },
       clinicas: [
@@ -356,7 +373,7 @@
           registro: { motivo: 'Desejo de engravidar.', hda: 'Tentando engravidar há 14 meses, ciclos regulares.', ciclo: 'Regular, 28/5 dias', gestacoes: '0', partos: '0', cesareas: '0', abortos: '0', contracepcao: 'Nenhum há 14 meses', tentante: '14 meses', pa: '110x70', peso: '62', altura: '1,64', exame_fisico: 'Bom estado geral.', exame_gineco: 'Especular sem alterações.', hipotese: 'Infertilidade feminina não especificada', cid: 'N97.9', cid_desc: 'Infertilidade feminina não especificada', conduta: 'Solicitada investigação inicial do casal.', retorno: 'Com exames' },
           prescricao: [], exames: [], orientacoes: '', adendos: [] },
         { id: k2, paciente_id: p1, clinica_id: c2, data: dias(3), tipo: 'Retorno', area: 'Fertilidade', plano: 'Particular', servico: '', valor: null, status: 'rascunho',
-          registro: { motivo: 'Retorno com exames.', hipotese: '', conduta: '' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
+          registro: { motivo: 'Retorno com exames.', hipotese: '', conduta: '', ciclo_tratamento: CICLO }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
         { id: k3, paciente_id: p2, clinica_id: c1, data: dias(20), tipo: 'Primeira consulta', area: 'Ginecológica', plano: 'Plano exemplo', servico: 'Consulta + preventivo', valor: 150, status: 'finalizada', finalizada_em: dias(20),
           registro: { motivo: 'Corrimento vaginal há 5 dias.', hipotese: 'Vaginose bacteriana', cid: 'N76.0', cid_desc: 'Vaginite aguda', conduta: 'Tratamento oral.' }, prescricao: [], exames: [], orientacoes: '', adendos: [] },
         { id: k4, paciente_id: p1, clinica_id: c1, data: dias(30), tipo: 'Retorno', area: 'Fertilidade', plano: 'Particular', servico: 'Retorno de fertilidade', valor: 400, status: 'finalizada', finalizada_em: dias(30),

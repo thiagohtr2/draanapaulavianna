@@ -383,13 +383,15 @@ revoke all on public.envios from anon;
 
 -- =====================================================================
 --  v4 — folhetos de orientação, orçamentos e assinatura digital
+--  (as listas de tipos já incluem os do v7, para o arquivo rodar de novo
+--   sem erro num banco que já tenha livretos)
 -- =====================================================================
 alter table public.modelos drop constraint if exists modelos_tipo_check;
 alter table public.modelos add constraint modelos_tipo_check
-  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento'));
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto'));
 alter table public.documentos drop constraint if exists documentos_tipo_check;
 alter table public.documentos add constraint documentos_tipo_check
-  check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento'));
+  check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento','livreto'));
 
 alter table public.perfis add column if not exists assinatura_provedor text not null default '';
 alter table public.perfis add column if not exists assinatura_cpf      text not null default '';
@@ -447,3 +449,15 @@ revoke all on public.valores from anon;
 alter table public.consultas add column if not exists plano   text not null default '';
 alter table public.consultas add column if not exists servico text not null default '';
 alter table public.consultas add column if not exists valor   numeric(10,2) check (valor is null or valor >= 0);
+-- =====================================================================
+--  v7 — livreto do ciclo de tratamento (fertilidade).
+--  O ciclo (medicações, controles, procedimento) fica no prontuário, em
+--  consultas.registro->'ciclo_tratamento' (jsonb, sem coluna nova); os textos
+--  do livreto são modelos do tipo 'livreto'; o PDF emitido é um documento 'livreto'.
+-- =====================================================================
+alter table public.modelos drop constraint if exists modelos_tipo_check;
+alter table public.modelos add constraint modelos_tipo_check
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto'));
+alter table public.documentos drop constraint if exists documentos_tipo_check;
+alter table public.documentos add constraint documentos_tipo_check
+  check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento','livreto'));

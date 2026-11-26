@@ -449,3 +449,22 @@ dialog.wide { width: min(980px, calc(100vw - 24px)); }
 .topbar .brand > span { min-width: 0; }
 .topbar .brand b, .topbar .brand small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 379px) { .topbar .brand b { font-size: 1.12rem; } .topbar .brand small { letter-spacing: .1em; font-size: .58rem; } .topbar { gap: var(--s1); } }
+
+/* ---------- ciclo de tratamento (fertilidade) e livreto da paciente ---------- */
+.ciclo-tit { font-family: var(--serif); font-size: 1.3rem; font-weight: 600; color: var(--wine); margin-top: var(--s2); }
+.ciclo-chips .var-chip { min-height: 44px; padding: 6px 14px; }
+.ciclo-chips .var-chip svg { flex: none; }
+.ciclo-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.ciclo-item { border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); background: #FFFDFD; }
+.ciclo-med, .ciclo-ctl, .ciclo-fin { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.4rem), 1fr)); align-items: end; }
+.ciclo-med { grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.6rem), 1fr)); }
+.lv-card { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr)); align-items: end; }
+.ciclo-med .cm-nome, .ciclo-fin .cf-nome, .ciclo-checks, .lv-card .lv-texto { grid-column: 1 / -1; }
+.ciclo-checks { display: flex; flex-wrap: wrap; gap: 0 var(--s4); }
+.ciclo-ctl > .orc-btns, .ciclo-fin > .orc-btns { justify-self: end; margin-left: 0; }
+.ciclo-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s2); }
+.ciclo-acoes > span:first-child { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.ciclo-livreto { padding-top: var(--s4); border-top: 1px solid var(--line); }
+.lv-protocolos { border: 0; padding: 0; margin: 0; min-width: 0; }
+.lv-protocolos .checks { display: flex; flex-wrap: wrap; gap: 0 var(--s4); }
+[data-ciclo-resumo] { overflow-wrap: anywhere; }
