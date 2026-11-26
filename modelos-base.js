@@ -214,6 +214,21 @@
       ['Medicações (estimativa)', 'Medicações da estimulação ovariana', 'Varia com a dose e a resposta; compra direta na farmácia']
     ], 'Acompanhamento pelo WhatsApp durante o ciclo', 'Taxa anual de armazenamento de embriões congelados\nExames laboratoriais e beta-hCG'),
 
+    /* ---------- Protocolo padrão do ciclo (exemplo): tudo contado a partir do Dia 01 ---------- */
+    { tipo: 'ciclo', nome: 'Exemplo — FIV com antagonista', conteudo: { sugerido: S, protocolo: 'FIV / ICSI', dias: '', modelo_id: '', obs: '',
+      meds: [
+        { nome: 'Gonal-f', dose: '225 UI', via: 'Subcutânea', horario: '20:00', de: 1, ate: 10 },
+        { nome: 'Menopur', dose: '75 UI', via: 'Subcutânea', horario: '20:00', de: 1, ate: 10 },
+        { nome: 'Cetrotide', dose: '0,25 mg', via: 'Subcutânea', horario: '08:00', de: 6, ate: 9 }
+      ],
+      controles: [{ dia: 5, hora: '08:30', us: true, sangue: true }, { dia: 7, hora: '08:30', us: true, sangue: false }, { dia: 9, hora: '08:00', us: true, sangue: true }],
+      final: [
+        { med: 'Cetrotide 0,25 mg', via: 'Subcutânea', dia: 10, hora: '08:00' },
+        { med: 'Ovidrel 250 mcg', via: 'Subcutânea', dia: 10, hora: '20:00' },
+        { med: 'Azitromicina 1 g (1 comprimido) ou 500 mg (2 comprimidos), após o jantar', via: 'Oral', dia: 11, hora: '20:00' }
+      ],
+      procedimento: { dia: 12, hora: '08:00' } } },
+
     /* ---------- Livretos do ciclo de tratamento (fertilidade) ---------- */
     liv('Livreto do ciclo — FIV / ICSI', ['FIV / ICSI', 'Congelamento de óvulos'], {
       boas_vindas_titulo: 'Que bom caminhar com você',

@@ -85,7 +85,7 @@
     open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
   };
 
-  const MARCA_NOME = 'Dra. Ana Paula Vianna', MARCA_ESP = 'Ginecologia e Fertilidade';
+  const MARCA_NOME = 'Dra. Ana Paula Vianna', MARCA_ESP = 'Ginecologia e Reprodução';
   const marca = (cls, tag = 'p') => `<div class="marca ${cls}"><img src="${A['logo-symbol']}" alt=""><${tag} class="marca-nome">${MARCA_NOME}</${tag}><p class="marca-esp">${MARCA_ESP}</p></div>`;
   const temAlergia = t => !!(t && t.trim() && !/^\s*(nega|sem\s|nenhum|nenhuma|não\s|nao\s)/i.test(t));
 
@@ -256,7 +256,7 @@
                 ${modo === 'entrar' ? `<button class="btn btn-quiet btn-block" type="button" data-modo="recuperar">Esqueci minha senha</button>` : ''}
               </form>`}
           </div>
-          <p class="foot">Ginecologia e Fertilidade · prontuário e receituário</p>
+          <p class="foot">Ginecologia e Reprodução · prontuário e receituário</p>
         </div>
       </main><div class="toasts" id="toasts" aria-live="polite"></div>`;
     const root = document.getElementById('root');
@@ -1194,7 +1194,7 @@
   const horaUI = h => h ? String(h).slice(0, 5).replace(':', 'h') : '';
   function diasDoCiclo(ci) {
     const n = parseInt(ci.dias, 10); if (n > 0) return Math.min(35, n);
-    const p = numDia(ci, (ci.procedimento || {}).data); return p && p > 0 ? Math.min(35, p) : 14;
+    const pr = ci.procedimento || {}; const p = parseInt(pr.dia, 10) || numDia(ci, pr.data); return p && p > 0 ? Math.min(35, p) : 14;
   }
   const faixaMed = (ci, m) => {
     const de = parseInt(m.de, 10) || 1, ate = parseInt(m.ate, 10) || diasDoCiclo(ci); const n = Math.abs(ate - de) + 1;
@@ -1240,16 +1240,17 @@
     };
   }
 
-  function cicloCamposHTML(pref, ci, { acoes = '' } = {}) {
+  function cicloCamposHTML(pref, ci, { acoes = '', relativo = false } = {}) {
     const lst = modelosDo('livreto');
     const pr = ci.procedimento || {};
-    return `<div class="ciclo stack" data-pref="${pref}">
-      ${ci.copiado_de ? `<div class="alert info" data-ciclo-copia>${ICON.layers}<p>Ciclo trazido da consulta de ${esc(fmtData(ci.copiado_de.data))} — confira as doses e as datas. <button type="button" class="btn btn-quiet small" data-cx="novo-ciclo">Começar um ciclo novo</button></p></div>` : ''}
-      <div class="grid grid-2 grid-4">
+    return `<div class="ciclo stack" data-pref="${pref}" data-rel="${relativo ? 1 : 0}">
+      ${relativo ? '' : `<div class="actions ciclo-padroes"><button type="button" class="btn btn-ghost" data-cx="padrao-usar">${ICON.layers}Usar protocolo padrão</button><button type="button" class="btn btn-quiet" data-cx="padrao-salvar">Salvar como protocolo padrão</button></div>`}
+      ${ci.copiado_de && !relativo ? `<div class="alert info" data-ciclo-copia>${ICON.layers}<p>Ciclo trazido da consulta de ${esc(fmtData(ci.copiado_de.data))} — confira as doses e as datas. <button type="button" class="btn btn-quiet small" data-cx="novo-ciclo">Começar um ciclo novo</button></p></div>` : ''}
+      <div class="grid grid-2 ${relativo ? '' : 'grid-4'}">
         ${campo('Tratamento', `<select id="${pref}-pt" data-ci="protocolo">${[...new Set([...PROTOCOLOS, ci.protocolo].filter(Boolean))].map(p => `<option ${p === ci.protocolo ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>`)}
-        ${campo('Início — Dia 01', `<input id="${pref}-in" data-ci="inicio" type="date" value="${esc(ci.inicio || '')}">`)}
+        ${relativo ? '' : campo('Início — Dia 01', `<input id="${pref}-in" data-ci="inicio" type="date" value="${esc(ci.inicio || '')}">`)}
         ${campo('Dias no calendário', `<input id="${pref}-dd" data-ci="dias" type="number" min="1" max="35" inputmode="numeric" value="${esc(ci.dias || '')}" placeholder="Automático">`)}
-        ${campo('Nº do prontuário na clínica', `<input id="${pref}-nh" data-ci="nhc" value="${esc(ci.nhc || '')}" placeholder="Opcional">`)}
+        ${relativo ? '' : campo('Nº do prontuário na clínica', `<input id="${pref}-nh" data-ci="nhc" value="${esc(ci.nhc || '')}" placeholder="Opcional">`)}
       </div>
       <p class="small muted" data-ciclo-resumo aria-live="polite"></p>
       <h3 class="ciclo-tit">Medicações da estimulação</h3>
@@ -1264,7 +1265,7 @@
       <div class="actions"><button type="button" class="btn btn-ghost" data-cx="ctl-add">${ICON.plus}Adicionar controle</button></div>
       <h3 class="ciclo-tit" data-proc-tit>${esc(rotuloProc(ci.protocolo))}</h3>
       <div class="grid grid-2">
-        ${campo('Data', `<input id="${pref}-pd" data-cp="data" type="date" value="${esc(pr.data || '')}">`)}
+        ${relativo ? campo('Dia do ciclo', `<input id="${pref}-pd" data-cp="dia" type="number" min="1" max="35" inputmode="numeric" value="${esc(pr.dia || '')}">`) : campo('Data', `<input id="${pref}-pd" data-cp="data" type="date" value="${esc(pr.data || '')}">`)}
         ${campo('Horário', `<input id="${pref}-ph" data-cp="hora" type="time" value="${esc(pr.hora || '')}">`)}
       </div>
       <p class="label">Medicações da reta final</p>
@@ -1279,8 +1280,10 @@
   }
   function ligarCiclo(root, ci, mudou) {
     const box = root.querySelector('.ciclo'); if (!box) return;
-    const pref = box.dataset.pref;
-    ci.meds = ci.meds || []; ci.controles = ci.controles || []; ci.final = ci.final || []; ci.procedimento = ci.procedimento || { data: '', hora: '' };
+    const pref = box.dataset.pref; const rel = box.dataset.rel === '1'; // rel: protocolo padrão, tudo em dias do ciclo
+    ci.meds = ci.meds || []; ci.controles = ci.controles || []; ci.final = ci.final || []; ci.procedimento = ci.procedimento || (rel ? { dia: '', hora: '' } : { data: '', hora: '' });
+    const quando = (pre, i, attrs, v) => rel ? campo('Dia do ciclo', `<input id="${pref}-${pre}-${i}" ${attrs} data-k="dia" type="number" min="1" max="35" inputmode="numeric" value="${esc(v.dia || '')}">`)
+      : campo(pre === 'cd' ? 'Data' : 'Dia', `<input id="${pref}-${pre}-${i}" ${attrs} data-k="data" type="date" value="${esc(v.data || '')}">`);
     const lm = box.querySelector('[data-lista="cmeds"]'), lc = box.querySelector('[data-lista="cctl"]'), lf = box.querySelector('[data-lista="cfin"]');
     const viaSel = (id, v, attrs) => `<select id="${id}" ${attrs}>${[...new Set([...VIAS_CICLO, v].filter(Boolean))].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     const del = (x, i, rot) => `<button type="button" class="icon-btn" data-cx="${x}" data-i="${i}" aria-label="${esc(rot)}">${ICON.trash}</button>`;
@@ -1300,7 +1303,7 @@
     };
     const drawC = foco => {
       lc.innerHTML = ci.controles.length ? ci.controles.map((c, i) => `<li class="ciclo-item"><div class="ciclo-ctl">
-          ${campo('Data', `<input id="${pref}-cd-${i}" data-cc="${i}" data-k="data" type="date" value="${esc(c.data || '')}">`)}
+          ${quando('cd', i, `data-cc="${i}"`, c)}
           ${campo('Horário', `<input id="${pref}-ch-${i}" data-cc="${i}" data-k="hora" type="time" value="${esc(c.hora || '')}">`)}
           <div class="ciclo-checks"><label class="check"><input type="checkbox" data-cc="${i}" data-k="us" ${c.us !== false ? 'checked' : ''}> Ultrassom</label><label class="check"><input type="checkbox" data-cc="${i}" data-k="sangue" ${c.sangue ? 'checked' : ''}> Exame de sangue</label></div>
           <span class="orc-btns">${del('ctl-del', i, `Remover controle ${i + 1}`)}</span></div></li>`).join('')
@@ -1311,7 +1314,7 @@
       lf.innerHTML = ci.final.length ? ci.final.map((f, i) => `<li class="ciclo-item"><div class="ciclo-fin">
           ${campo('Medicação', `<input id="${pref}-fn-${i}" data-cf="${i}" data-k="med" list="${pref}-dl-fin" value="${esc(f.med || '')}">`, 'cf-nome')}
           ${campo('Via', viaSel(`${pref}-fv-${i}`, f.via || 'Subcutânea', `data-cf="${i}" data-k="via"`))}
-          ${campo('Dia', `<input id="${pref}-fd-${i}" data-cf="${i}" data-k="data" type="date" value="${esc(f.data || '')}">`)}
+          ${quando('fd', i, `data-cf="${i}"`, f)}
           ${campo('Horário', `<input id="${pref}-fh-${i}" data-cf="${i}" data-k="hora" type="time" value="${esc(f.hora || '')}">`)}
           <span class="orc-btns">${del('fin-del', i, `Remover ${f.med || 'medicação'}`)}</span></div></li>`).join('')
         : `<li class="muted small">Nenhuma medicação da reta final.</li>`;
@@ -1319,8 +1322,9 @@
     };
     function resumo() {
       const r = box.querySelector('[data-ciclo-resumo]'); const n = diasDoCiclo(ci); const pr = ci.procedimento || {};
-      const np = numDia(ci, pr.data);
-      r.textContent = ci.inicio ? `Dia 01 = ${diaCurtoUI(dLocal(ci.inicio))} · calendário de ${n} dias, até ${diaCurtoUI(diaDoCiclo(ci, n))}${np ? ` · ${rotuloProc(ci.protocolo).toLowerCase()} no dia ${pad(np)}` : ''}.`
+      const np = rel ? parseInt(pr.dia, 10) : numDia(ci, pr.data);
+      r.textContent = rel ? `Tudo contado a partir do Dia 01 · calendário de ${n} dias${np ? ` · ${rotuloProc(ci.protocolo).toLowerCase()} no dia ${pad(np)}` : ''}. Na paciente, basta informar a data do Dia 01.`
+        : ci.inicio ? `Dia 01 = ${diaCurtoUI(dLocal(ci.inicio))} · calendário de ${n} dias, até ${diaCurtoUI(diaDoCiclo(ci, n))}${np ? ` · ${rotuloProc(ci.protocolo).toLowerCase()} no dia ${pad(np)}` : ''}.`
         : 'Informe o início (Dia 01) para as datas saírem no calendário. Sem ele, o livreto sai com as datas em branco, para preencher à mão.';
       $$('[data-faixa]', box).forEach(s => { const m = ci.meds[+s.dataset.faixa]; s.textContent = m && (m.nome || '').trim() ? faixaMed(ci, m) : ''; });
       $$('[data-k="ate"]', box).forEach(i => { i.placeholder = String(n); });
@@ -1329,13 +1333,29 @@
     }
     drawM(); drawC(); drawF();
     const ok = () => { resumo(); mudou && mudou(); };
+    const num = (k, v) => (k === 'de' || k === 'ate' || k === 'dia') ? (parseInt(v, 10) || '') : v;
+    // mudou o Dia 01: controles, reta final e procedimento andam junto (é só trocar a data)
+    let refInicio = ci.inicio || '';
+    const deslocar = (de, para) => {
+      const n = Math.round((dLocal(para) - dLocal(de)) / 864e5); if (!n) return;
+      const mov = iso => { if (!iso) return iso; const d = dLocal(iso); d.setDate(d.getDate() + n); return isoDe(d); };
+      let algum = false;
+      ci.controles.forEach(c => { if (c.data) { c.data = mov(c.data); algum = true; } });
+      ci.final.forEach(f => { if (f.data) { f.data = mov(f.data); algum = true; } });
+      if (ci.procedimento.data) { ci.procedimento.data = mov(ci.procedimento.data); algum = true; const pd = box.querySelector(`#${pref}-pd`); if (pd) pd.value = ci.procedimento.data; }
+      if (algum) { drawC(); drawF(); toast(`Controles, reta final e ${rotuloProc(ci.protocolo).toLowerCase()} acompanharam o novo Dia 01 (${n > 0 ? '+' : ''}${n} ${Math.abs(n) === 1 ? 'dia' : 'dias'}).`); }
+    };
     box.addEventListener('input', e => {
       const el = e.target; const k = el.dataset.k; const val = el.type === 'checkbox' ? el.checked : el.value;
-      if (el.dataset.ci) { ci[el.dataset.ci] = val; if (el.dataset.ci === 'protocolo' && !ci.final.some(f => f.data)) { ci.final = finalPadrao(val); drawF(); } }
-      else if (el.dataset.cp) ci.procedimento[el.dataset.cp] = val;
-      else if (el.dataset.cm != null) ci.meds[+el.dataset.cm][k] = (k === 'de' || k === 'ate') ? (parseInt(val, 10) || '') : val;
-      else if (el.dataset.cc != null) ci.controles[+el.dataset.cc][k] = val;
-      else if (el.dataset.cf != null) ci.final[+el.dataset.cf][k] = val;
+      if (el.dataset.ci) {
+        ci[el.dataset.ci] = el.dataset.ci === 'dias' ? num('dia', val) : val;
+        if (el.dataset.ci === 'protocolo' && !ci.final.some(f => f.data || f.dia)) { ci.final = finalPadrao(val).map(f => rel ? { med: f.med, via: f.via, dia: '', hora: '' } : f); drawF(); }
+        if (el.dataset.ci === 'inicio') { if (refInicio && val && val !== refInicio) deslocar(refInicio, val); if (val) refInicio = val; }
+      }
+      else if (el.dataset.cp) ci.procedimento[el.dataset.cp] = num(el.dataset.cp, val);
+      else if (el.dataset.cm != null) ci.meds[+el.dataset.cm][k] = num(k, val);
+      else if (el.dataset.cc != null) ci.controles[+el.dataset.cc][k] = num(k, val);
+      else if (el.dataset.cf != null) ci.final[+el.dataset.cf][k] = num(k, val);
       else return;
       ok();
     });
@@ -1353,10 +1373,27 @@
       if (x === 'med-add') { ci.meds.push({ nome: '', dose: '', via: 'Subcutânea', horario: '', de: 1, ate: '' }); drawM(true); }
       else if (x === 'med-del') { ci.meds.splice(i, 1); drawM(); }
       else if (x === 'med-up' && i > 0) { [ci.meds[i - 1], ci.meds[i]] = [ci.meds[i], ci.meds[i - 1]]; drawM(); }
-      else if (x === 'ctl-add') { const ult = ci.controles[ci.controles.length - 1]; let d = ''; if (ult && ult.data) { const n = dLocal(ult.data); n.setDate(n.getDate() + 2); d = isoDe(n); } ci.controles.push({ data: d, hora: ult ? ult.hora || '' : '', us: true, sangue: false }); drawC(true); }
+      else if (x === 'ctl-add') {
+        const ult = ci.controles[ci.controles.length - 1];
+        if (rel) ci.controles.push({ dia: ult && ult.dia ? Math.min(35, +ult.dia + 2) : 5, hora: ult ? ult.hora || '' : '', us: true, sangue: false });
+        else { let d = ''; if (ult && ult.data) { const n = dLocal(ult.data); n.setDate(n.getDate() + 2); d = isoDe(n); } ci.controles.push({ data: d, hora: ult ? ult.hora || '' : '', us: true, sangue: false }); }
+        drawC(true);
+      }
       else if (x === 'ctl-del') { ci.controles.splice(i, 1); drawC(); }
-      else if (x === 'fin-add') { ci.final.push({ med: '', via: 'Subcutânea', data: '', hora: '' }); drawF(true); }
+      else if (x === 'fin-add') { ci.final.push(rel ? { med: '', via: 'Subcutânea', dia: '', hora: '' } : { med: '', via: 'Subcutânea', data: '', hora: '' }); drawF(true); }
+      else if (x === 'padrao-usar') { await usarPadraoCiclo(ci, root, mudou); return; }
+      else if (x === 'padrao-salvar') { salvarPadraoCiclo(ci); return; }
       else if (x === 'fin-del') { ci.final.splice(i, 1); drawF(); }
+      else if (x === 'gatilho' && rel) {
+        // no protocolo padrão: tudo em dias do ciclo (o Dia 01 começa à 0h)
+        const pr = ci.procedimento; if (!pr.dia || !pr.hora) { toast(`Informe primeiro o dia e o horário do procedimento (${rotuloProc(ci.protocolo).toLowerCase()}).`, true); box.querySelector(`#${pref}-pd`).focus(); return; }
+        const [hh, mi] = pr.hora.split(':').map(Number); const min = ((+pr.dia - 1) * 24 + hh) * 60 + mi - 36 * 60;
+        let g = ci.final.find(f => RE_GATILHO.test(f.med || '')); if (!g) { g = { med: 'Ovidrel 250 mcg', via: 'Subcutânea' }; ci.final.push(g); }
+        g.dia = Math.floor(min / 1440) + 1; g.hora = `${pad(Math.floor((min % 1440) / 60))}:${pad(min % 60)}`;
+        ci.final.filter(f => RE_BLOQUEIO.test(f.med || '') && !f.dia).forEach(f => { f.dia = g.dia; });
+        ci.final.filter(f => RE_ANTIBIOTICO.test(f.med || '') && !f.dia).forEach(f => { f.dia = +pr.dia - 1; });
+        drawF(); toast(`Gatilho no dia ${pad(g.dia)} às ${horaUI(g.hora)} (36 h antes). Confira os horários.`);
+      }
       else if (x === 'gatilho') {
         const pr = ci.procedimento; if (!pr.data || !pr.hora) { toast(`Informe primeiro a data e o horário do procedimento (${rotuloProc(ci.protocolo).toLowerCase()}).`, true); box.querySelector(`#${pref}-pd`).focus(); return; }
         const [hh, mi] = pr.hora.split(':').map(Number); const t = dLocal(pr.data); t.setHours(hh, mi, 0, 0); t.setTime(t.getTime() - 36 * 3600e3);
@@ -1376,6 +1413,69 @@
       ok();
     });
   }
+  /* ---------- protocolos padrão do ciclo: tudo contado em dias a partir do Dia 01 ---------- */
+  const padraoVazio = () => ({ protocolo: 'FIV / ICSI', dias: '', modelo_id: '', obs: '', meds: [], controles: [], final: finalPadrao('FIV / ICSI').map(f => ({ med: f.med, via: f.via, dia: '', hora: '' })), procedimento: { dia: '', hora: '' } });
+  function cicloParaPadrao(ci) {
+    const dia = iso => (iso && numDia(ci, iso)) || '';
+    return {
+      protocolo: ci.protocolo || 'FIV / ICSI', dias: ci.dias || '', modelo_id: ci.modelo_id || '', obs: ci.obs || '',
+      meds: (ci.meds || []).filter(m => (m.nome || '').trim()).map(m => ({ nome: m.nome.trim(), dose: m.dose || '', via: m.via || '', horario: m.horario || '', de: m.de || 1, ate: m.ate || '' })),
+      controles: (ci.controles || []).filter(c => c.data).map(c => ({ dia: dia(c.data), hora: c.hora || '', us: c.us !== false, sangue: !!c.sangue })),
+      final: (ci.final || []).filter(f => (f.med || '').trim()).map(f => ({ med: f.med.trim(), via: f.via || '', dia: dia(f.data), hora: f.hora || '' })),
+      procedimento: { dia: dia((ci.procedimento || {}).data), hora: (ci.procedimento || {}).hora || '' }
+    };
+  }
+  function padraoParaCiclo(p, inicio) {
+    const data = d => (d && inicio) ? isoDe(diaDoCiclo({ inicio }, +d)) : '';
+    const pr = p.procedimento || {};
+    return { ...cicloVazio(p.protocolo || 'FIV / ICSI'), protocolo: p.protocolo || 'FIV / ICSI', inicio: inicio || '', dias: p.dias || '', modelo_id: p.modelo_id || '', obs: p.obs || '',
+      meds: (p.meds || []).map(m => ({ nome: m.nome || '', dose: m.dose || '', via: m.via || '', horario: m.horario || '', de: m.de || 1, ate: m.ate || '' })),
+      controles: (p.controles || []).map(c => ({ data: data(c.dia), hora: c.hora || '', us: c.us !== false, sangue: !!c.sangue })),
+      final: (p.final || []).map(f => ({ med: f.med || '', via: f.via || '', data: data(f.dia), hora: f.hora || '' })),
+      procedimento: { data: data(pr.dia), hora: pr.hora || '' } };
+  }
+  function perguntarDia01(valor) {
+    return new Promise(res => {
+      let r = null;
+      abrirDialogo({
+        titulo: 'Início do ciclo',
+        corpo: `<form class="stack" id="f-d01" novalidate><p class="small muted">As datas dos controles, da reta final e do procedimento são calculadas a partir do Dia 01.</p>${campo('Início — Dia 01', `<input id="d01" type="date" value="${esc(valor || isoDe(new Date()))}" required>`)}</form>`,
+        rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Aplicar protocolo</button>`,
+        aoAbrir: (d, fechar) => {
+          const ap = () => { const i = d.querySelector('#d01'); if (!i.value) { erroCampo(i, 'Informe a data do Dia 01.'); i.focus(); return; } r = i.value; fechar(); };
+          d.querySelector('[data-ok]').addEventListener('click', ap); d.querySelector('#f-d01').addEventListener('submit', ev => { ev.preventDefault(); ap(); });
+        },
+        aoFechar: () => res(r)
+      });
+    });
+  }
+  async function usarPadraoCiclo(ci, root, mudou) {
+    const m = await escolherModelo('ciclo'); if (!m) return;
+    if ((ci.meds || []).some(x => (x.nome || '').trim()) && !(await confirmar(`Substituir as medicações e as datas deste ciclo pelo protocolo “${m.nome}”?`, { ok: 'Substituir', titulo: 'Usar protocolo padrão' }))) return;
+    const inicio = await perguntarDia01(ci.inicio); if (!inicio) return;
+    const nhc = ci.nhc || '';
+    const novo = padraoParaCiclo(m.conteudo || {}, inicio);
+    Object.keys(ci).forEach(k => delete ci[k]); Object.assign(ci, novo, { nhc });
+    mudou && mudou(); root.dispatchEvent(new CustomEvent('ciclo-redesenhar', { bubbles: true }));
+    toast(`Protocolo “${m.nome}” aplicado a partir de ${fmtData(inicio)}. Confira as doses — para mudar tudo de data, troque só o Dia 01.`);
+  }
+  function salvarPadraoCiclo(ci) {
+    if (!(ci.meds || []).some(m => (m.nome || '').trim())) return toast('Adicione as medicações antes de salvar o protocolo padrão.', true);
+    const temDatas = (ci.controles || []).some(c => c.data) || (ci.final || []).some(f => f.data) || (ci.procedimento || {}).data;
+    if (temDatas && !ci.inicio) return toast('Informe o início (Dia 01): as datas viram dias do ciclo no protocolo padrão.', true);
+    const conteudo = cicloParaPadrao(ci);
+    abrirDialogo({
+      titulo: 'Salvar como protocolo padrão',
+      corpo: `<form id="sp-f" class="stack" novalidate>${campo('Nome do protocolo', `<input id="sp-nome" autofocus value="${esc(ci.protocolo || '')}" placeholder="Ex.: FIV antagonista — 225 UI">`)}
+        <p class="small muted">${conteudo.meds.length} ${conteudo.meds.length === 1 ? 'medicação' : 'medicações'}, ${conteudo.controles.length} ${conteudo.controles.length === 1 ? 'controle' : 'controles'}${conteudo.procedimento.dia ? ` e o procedimento no dia ${conteudo.procedimento.dia}` : ''}, tudo contado a partir do Dia 01. Na próxima paciente, use “Usar protocolo padrão” e informe só a data.</p></form>`,
+      rodape: `<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-ok>Salvar protocolo</button>`,
+      aoAbrir: (d, fechar) => d.querySelector('[data-ok]').addEventListener('click', e => ocupado(e.currentTarget, async () => {
+        const n = d.querySelector('#sp-nome'); if (!n.value.trim()) { erroCampo(n, 'Dê um nome ao protocolo.'); n.focus(); return; }
+        try { await salvarModelo({ tipo: 'ciclo', nome: n.value.trim(), conteudo }); toast(`Protocolo “${n.value.trim()}” salvo. Ele fica em Modelos → Protocolos do ciclo.`); fechar(); } catch (err) { falha(err); }
+      }))
+    });
+  }
+
   // receita com as medicações do ciclo (a médica revisa antes de emitir)
   function receitaDoCiclo(ci) {
     const viaRx = v => ({ 'Subcutânea': 'Subcutâneo', 'Transdérmica': 'Transdérmico' }[v] || v || 'Subcutâneo');
@@ -1909,7 +2009,7 @@
   /* =====================================================================
      Modelos e textos padrão
      ===================================================================== */
-  const TIPOS_MODELO = [['medicamentos', 'Medicamentos'], ['prescricao', 'Receitas padrão'], ['exames', 'Pacotes de exames'], ['atestado', 'Atestados'], ['orientacao', 'Folhetos de orientação'], ['livreto', 'Livreto do ciclo'], ['orcamento', 'Orçamentos'], ['texto', 'Textos da consulta']];
+  const TIPOS_MODELO = [['medicamentos', 'Medicamentos'], ['prescricao', 'Receitas padrão'], ['exames', 'Pacotes de exames'], ['atestado', 'Atestados'], ['orientacao', 'Folhetos de orientação'], ['ciclo', 'Protocolos do ciclo'], ['livreto', 'Livreto do ciclo'], ['orcamento', 'Orçamentos'], ['texto', 'Textos da consulta']];
   const contaTipo = k => k === 'medicamentos' ? S.favoritos.length : modelosDo(k).length;
   // Campos de texto livre que aceitam "textos padrão"
   const CAMPOS = [
@@ -1934,6 +2034,7 @@
     if (m.tipo === 'atestado') return c.titulo || 'Atestado médico';
     if (m.tipo === 'orientacao') return [c.titulo, c.referencia ? `datas a partir de: ${c.referencia.toLowerCase()}` : ''].filter(Boolean).join(' · ');
     if (m.tipo === 'orcamento') { const n = (c.itens || []).length; const t = orcTotal(c); return `${n} ${n === 1 ? 'item' : 'itens'}${t ? ' · total ' + PDF.brl(t) : ' · valores a preencher'}`; }
+    if (m.tipo === 'ciclo') { const nm = (c.meds || []).length, nc = (c.controles || []).length, pd = (c.procedimento || {}).dia; return [c.protocolo, `${nm} ${nm === 1 ? 'medicação' : 'medicações'}`, `${nc} ${nc === 1 ? 'controle' : 'controles'}`, pd ? `${rotuloProc(c.protocolo).toLowerCase()} no dia ${pd}` : ''].filter(Boolean).join(' · '); }
     if (m.tipo === 'livreto') { const ne = String(c.etapas || '').split('\n').filter(x => x.trim()).length; const nc = (c.cuidados || []).length; const k = c.contatos || {}; return [(c.protocolos || []).join(', ') || 'Todos os tratamentos', `${ne} etapas · ${nc} cuidados`, (c.procedimento || {}).titulo || '', k.whatsapp || k.clinica_tel ? '' : 'contatos a preencher'].filter(Boolean).join(' · '); }
     return (c.texto || '').slice(0, 110) + ((c.texto || '').length > 110 ? '…' : '');
   }
@@ -2277,7 +2378,7 @@
     const lst = modelosDo(filtroModelo);
     let corpo;
     if (!lst.length) {
-      corpo = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nada em “${esc(nomeT)}” ainda</h3><p>${{ prescricao: 'Selecione medicamentos do seu banco, ajuste a posologia e salve com um nome. Depois, na receita de qualquer paciente, é só tocar em “Usar receita padrão”.', exames: 'Monte pacotes de exames (ex.: rotina anual, investigação de infertilidade) com a indicação clínica.', atestado: 'Atestados com campos automáticos: nome, CPF, data e hora entram sozinhos; os dias de afastamento são perguntados.', texto: 'Textos padrão para qualquer campo da consulta — exame físico normal, exame ginecológico, conduta… Marque como automático para já vir preenchido.', orientacao: 'Folhetos de orientação por protocolo (inseminação, punção, transferência…), com datas calculadas sozinhas a partir do dia do procedimento.', orcamento: 'Orçamentos prontos com honorários, procedimentos e medicações: escolha, ajuste os valores e gere o PDF para a paciente.', livreto: 'O livreto do ciclo para a paciente: capa, etapas, cuidados, calendário de medicações com as datas do ciclo, reta final, jejum e orientações para o dia. Os textos ficam aqui; as medicações e datas vêm da consulta de fertilidade.' }[filtroModelo]}</p>
+      corpo = `<div class="empty"><img src="${A['logo-symbol']}" alt=""><h3>Nada em “${esc(nomeT)}” ainda</h3><p>${{ prescricao: 'Selecione medicamentos do seu banco, ajuste a posologia e salve com um nome. Depois, na receita de qualquer paciente, é só tocar em “Usar receita padrão”.', exames: 'Monte pacotes de exames (ex.: rotina anual, investigação de infertilidade) com a indicação clínica.', atestado: 'Atestados com campos automáticos: nome, CPF, data e hora entram sozinhos; os dias de afastamento são perguntados.', texto: 'Textos padrão para qualquer campo da consulta — exame físico normal, exame ginecológico, conduta… Marque como automático para já vir preenchido.', orientacao: 'Folhetos de orientação por protocolo (inseminação, punção, transferência…), com datas calculadas sozinhas a partir do dia do procedimento.', orcamento: 'Orçamentos prontos com honorários, procedimentos e medicações: escolha, ajuste os valores e gere o PDF para a paciente.', ciclo: 'Os ciclos que você usa na maioria das pacientes: medicações, doses, ultrassons, exames, reta final e procedimento, tudo contado a partir do Dia 01. Na consulta de fertilidade, toque em “Usar protocolo padrão” e informe só a data do Dia 01.', livreto: 'O livreto do ciclo para a paciente: capa, etapas, cuidados, calendário de medicações com as datas do ciclo, reta final, jejum e orientações para o dia. Os textos ficam aqui; as medicações e datas vêm da consulta de fertilidade.' }[filtroModelo]}</p>
         <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-x="novo">${ICON.plus}Criar modelo</button><button class="btn btn-ghost" data-x="basicos">Restaurar sugestões</button></div></div>`;
     } else if (filtroModelo === 'texto') {
       const grupos = {}; lst.forEach(m => { const k = (m.conteudo || {}).campo || 'outros'; (grupos[k] = grupos[k] || []).push(m); });
@@ -2326,20 +2427,22 @@
     if (M.tipo === 'texto') { c.campo = c.campo || 'exame_fisico'; c.texto = c.texto || ''; }
     if (M.tipo === 'orientacao') { c.titulo = c.titulo ?? ''; c.referencia = c.referencia || ''; c.texto = c.texto || ''; }
     if (M.tipo === 'orcamento') Object.assign(c, { ...orcamentoVazio(), ...pickOrc(c) });
+    if (M.tipo === 'ciclo') { const k = { ...padraoVazio(), ...c }; k.procedimento = { dia: '', hora: '', ...(c.procedimento || {}) }; Object.assign(c, k); }
     if (M.tipo === 'livreto') { const base = novo ? JSON.parse(JSON.stringify((baseLivretos()[0] || {}).conteudo || {})) : {}; delete base.sugerido; base.protocolos = []; const k = { ...livretoVazio(), ...base, ...c }; k.contatos = { ...(base.contatos || {}), ...(c.contatos || {}) }; k.procedimento = { ...(base.procedimento || {}), ...(c.procedimento || {}) }; Object.assign(c, k); }
-    const nomeT = { prescricao: 'receita padrão', exames: 'pacote de exames', atestado: 'atestado', texto: 'texto padrão', orientacao: 'folheto de orientação', orcamento: 'orçamento', livreto: 'livreto do ciclo' }[M.tipo];
+    const nomeT = { prescricao: 'receita padrão', exames: 'pacote de exames', atestado: 'atestado', texto: 'texto padrão', orientacao: 'folheto de orientação', orcamento: 'orçamento', livreto: 'livreto do ciclo', ciclo: 'protocolo do ciclo' }[M.tipo];
     const VARS = ['paciente', 'cpf', 'data', 'hora', 'dias', 'idade', 'clinica'];
-    let corpo = `<form id="md-f" class="stack" novalidate>${campo('Nome do modelo *', `<input id="md-nome" value="${esc(M.nome)}" placeholder="${{ prescricao: 'Ex.: Candidíase vulvovaginal', exames: 'Ex.: Rotina ginecológica anual', atestado: 'Ex.: Afastamento', texto: 'Ex.: Exame ginecológico normal', orientacao: 'Ex.: Inseminação intrauterina', orcamento: 'Ex.: Inseminação intrauterina', livreto: 'Ex.: Livreto — FIV na Clínica Vida' }[M.tipo]}">`)}`;
+    let corpo = `<form id="md-f" class="stack" novalidate>${campo('Nome do modelo *', `<input id="md-nome" value="${esc(M.nome)}" placeholder="${{ prescricao: 'Ex.: Candidíase vulvovaginal', exames: 'Ex.: Rotina ginecológica anual', atestado: 'Ex.: Afastamento', texto: 'Ex.: Exame ginecológico normal', orientacao: 'Ex.: Inseminação intrauterina', orcamento: 'Ex.: Inseminação intrauterina', livreto: 'Ex.: Livreto — FIV na Clínica Vida', ciclo: 'Ex.: FIV antagonista — 225 UI' }[M.tipo]}">`)}`;
     if (M.tipo === 'prescricao') corpo += `${medsPainelHTML('mdp')}<p class="label">Medicamentos desta receita padrão</p><ol class="rx-list" id="md-rx"></ol><div class="actions"><button type="button" class="btn btn-ghost" data-m="rx-add">${ICON.plus}Adicionar medicamento</button></div>${campo('Orientações', `<textarea id="md-or" rows="4">${esc(c.orientacoes)}</textarea>`)}`;
     if (M.tipo === 'exames') corpo += `<p class="label">Exames</p><ul class="ex-list" id="md-ex"></ul><div class="actions"><button type="button" class="btn btn-ghost" data-m="ex-add">${ICON.plus}Adicionar exame</button></div>${campo('Indicação clínica', `<textarea id="md-ind" rows="2">${esc(c.indicacao)}</textarea>`)}`;
     if (M.tipo === 'atestado') corpo += `${campo('Título do documento', `<input id="md-tit" value="${esc(c.titulo)}">`)}${campo('Texto', `<textarea id="md-tx" rows="7">${esc(c.texto)}</textarea>`)}<div><p class="label" style="margin-bottom:6px">Inserir campo automático</p><div class="chips">${VARS.map(v => `<button type="button" class="chip var-chip" data-var-ins="{${v}}">{${v}}</button>`).join('')}</div><p class="small muted" style="margin-top:8px">Nome, CPF, data, hora, idade e clínica entram sozinhos. {dias} e qualquer outro campo entre chaves (ex.: {acompanhante}) são perguntados na hora de usar.</p></div>`;
     if (M.tipo === 'texto') corpo += `${campo('Campo da consulta', `<select id="md-campo">${CAMPOS.map(([k, t]) => `<option value="${k}" ${k === c.campo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`)}${campo('Texto padrão', `<textarea id="md-tx" rows="7">${esc(c.texto)}</textarea>`)}<label class="check"><input type="checkbox" id="md-auto" ${c.auto ? 'checked' : ''}> Já preencher este campo em toda nova consulta</label>`;
     if (M.tipo === 'orientacao') corpo += folhetoCamposHTML('mdf', c, { modelo: true });
     if (M.tipo === 'orcamento') corpo += orcamentoCamposHTML('mdo', c);
+    if (M.tipo === 'ciclo') corpo += `<p class="small muted">Tudo é contado em dias a partir do Dia 01 (o primeiro dia da estimulação). Na paciente, você escolhe este protocolo e informa só a data do Dia 01: as datas dos ultrassons, dos exames, da reta final e do procedimento saem calculadas.</p>${cicloCamposHTML('mdc', c, { relativo: true })}`;
     if (M.tipo === 'livreto') corpo += `<p class="small muted">Os textos abaixo saem no livreto de todas as pacientes que usarem este modelo. Tenha um modelo por tratamento (e, se os contatos mudarem, por clínica).</p>${livretoCamposHTML('mdl', c)}`;
     corpo += `</form>`;
     abrirDialogo({
-      titulo: novo ? `Novo modelo de ${nomeT}` : `Editar modelo de ${nomeT}`, largo: ['prescricao', 'orientacao', 'orcamento', 'livreto'].includes(M.tipo), corpo,
+      titulo: novo ? `Novo modelo de ${nomeT}` : `Editar modelo de ${nomeT}`, largo: ['prescricao', 'orientacao', 'orcamento', 'livreto', 'ciclo'].includes(M.tipo), corpo,
       rodape: `${novo ? '' : `<button class="btn btn-danger" data-m="del">${ICON.trash}Excluir</button>`}${M.tipo !== 'texto' ? `<button class="btn btn-ghost" data-m="prev">${ICON.doc}Ver PDF</button>` : ''}<button class="btn btn-ghost" data-close>Cancelar</button><button class="btn btn-primary" data-m="ok">Salvar modelo</button>`,
       aoAbrir: (d, fechar) => {
         const drawRx = foco => { const ol = d.querySelector('#md-rx'); if (!ol) return; ol.innerHTML = c.itens.length ? rxItensHTML(c.itens, false, 'md-rx') : '<li class="muted small">Toque nos medicamentos acima para montar a receita padrão.</li>'; if (foco) d.querySelector(`#md-rx-n-${c.itens.length - 1}`).focus(); };
@@ -2349,6 +2452,7 @@
         if (M.tipo === 'orientacao') ligarFolheto(d, c);
         if (M.tipo === 'orcamento') ligarOrcamento(d, c);
         if (M.tipo === 'livreto') ligarLivreto(d, c);
+        if (M.tipo === 'ciclo') ligarCiclo(d, c, null);
         const ler = () => {
           M.nome = d.querySelector('#md-nome').value.trim();
           if (M.tipo === 'prescricao') c.orientacoes = d.querySelector('#md-or').value;
@@ -2394,6 +2498,7 @@
             else if (M.tipo === 'exames') gerarEmostrar({ ...base, tipo: 'exames', exames: c.exames, indicacao: c.indicacao }, 'Exemplo do modelo');
             else if (M.tipo === 'orientacao') { const ref = new Date(); ref.setDate(ref.getDate() + 3); ref.setHours(9, 0, 0, 0); gerarEmostrar({ ...base, tipo: 'orientacoes', titulo: c.titulo, orientacoes: PDF.resolverDatas(tx, ref) }, `Exemplo (datas a partir de ${PDF.dataExtenso(ref)}, 9h00)`); }
             else if (M.tipo === 'orcamento') gerarEmostrar({ ...base, tipo: 'orcamento', ...pickOrc(c), desconto: parseValor(c.desconto) || 0, itens: c.itens.filter(i => (i.descricao || '').trim()).map(i => ({ ...i, valor: Number(i.valor) || 0 })) }, 'Exemplo do modelo');
+            else if (M.tipo === 'ciclo') { const h = new Date(); h.setDate(h.getDate() + 2); const ci = padraoParaCiclo(c, isoDe(h)); gerarEmostrar({ ...base, tipo: 'livreto', livreto: JSON.parse(JSON.stringify((modeloLivretoPara(ci) || {}).conteudo || {})), ciclo: ci, rotuloArquivo: 'Livreto do ciclo' }, `Exemplo do livreto (Dia 01 em ${fmtData(isoDe(h))})`); }
             else if (M.tipo === 'livreto') gerarEmostrar({ ...base, tipo: 'livreto', livreto: JSON.parse(JSON.stringify(c)), ciclo: cicloExemplo((c.protocolos || [])[0]), rotuloArquivo: 'Livreto do ciclo' }, 'Exemplo do livreto (ciclo fictício)');
             else gerarEmostrar({ ...base, tipo: 'atestado', titulo: c.titulo, texto: tx }, 'Exemplo do modelo');
           } else if (x === 'del') {
@@ -2408,7 +2513,8 @@
             if (M.tipo === 'exames') c.exames = c.exames.filter(it => it.nome.trim());
             if (M.tipo === 'orcamento') c.itens = c.itens.filter(it => (it.descricao || '').trim());
             if (M.tipo === 'livreto') c.cuidados = (c.cuidados || []).filter(k => (k.titulo || '').trim() || (k.texto || '').trim());
-            const vazio = M.tipo === 'prescricao' ? !c.itens.length && !c.orientacoes.trim() : M.tipo === 'exames' ? !c.exames.length : M.tipo === 'orcamento' ? !c.itens.length : M.tipo === 'livreto' ? !String(c.titulo || '').trim() && !String(c.etapas || '').trim() : !String(c.texto).trim();
+            if (M.tipo === 'ciclo') { c.meds = (c.meds || []).filter(m => (m.nome || '').trim()); c.controles = (c.controles || []).filter(k => k.dia); c.final = (c.final || []).filter(f => (f.med || '').trim()); }
+            const vazio = M.tipo === 'prescricao' ? !c.itens.length && !c.orientacoes.trim() : M.tipo === 'exames' ? !c.exames.length : M.tipo === 'orcamento' ? !c.itens.length : M.tipo === 'livreto' ? !String(c.titulo || '').trim() && !String(c.etapas || '').trim() : M.tipo === 'ciclo' ? !(c.meds || []).some(m => (m.nome || '').trim()) : !String(c.texto).trim();
             if (vazio) { toast('O modelo está vazio — preencha o conteúdo antes de salvar.', true); if (M.tipo === 'orcamento') { const ad = d.querySelector('[data-o="add"]'); if (ad) ad.click(); } if (M.tipo === 'prescricao' && !c.itens.length) { c.itens.push(copiaItem({})); drawRx(); } if (M.tipo === 'exames' && !c.exames.length) { c.exames.push({ nome: '' }); drawEx(); } return; }
             await ocupado(b, async () => {
               try { await salvarModelo({ ...(novo ? {} : { id: orig.id }), tipo: M.tipo, nome: M.nome, conteudo: { ...c, sugerido: false } }); toast(novo ? 'Modelo criado.' : 'Modelo salvo como seu padrão.'); fechar(); depois && depois(); } catch (err) { falha(err); }
@@ -2688,7 +2794,7 @@
         <div class="grid grid-3">
           ${campo('Tratamento', `<select id="pf-t" name="tratamento">${['Dra.', 'Dr.', ''].map(t => `<option value="${t}" ${t === (p.tratamento ?? 'Dra.') ? 'selected' : ''}>${t || '(nenhum)'}</option>`).join('')}</select>`)}
           <div class="span-2">${campo('Nome profissional', `<input id="pf-n" name="nome" value="${esc(p.nome)}" autocomplete="name">`)}</div>
-          ${campo('Especialidade', `<input id="pf-e" name="especialidade" value="${esc(p.especialidade || 'Ginecologia e Fertilidade')}">`)}
+          ${campo('Especialidade', `<input id="pf-e" name="especialidade" value="${esc(p.especialidade || 'Ginecologia e Reprodução')}">`)}
           ${campo('CRM', `<input id="pf-crm" name="crm" value="${esc(p.crm)}" inputmode="numeric">`)}
           ${campo('UF do CRM', `<select id="pf-uf" name="crm_uf">${UFS.map(u => `<option ${u === (p.crm_uf || 'BA') ? 'selected' : ''}>${u}</option>`).join('')}</select>`)}
           ${campo('RQE', `<input id="pf-rqe" name="rqe" value="${esc(p.rqe)}" inputmode="numeric">`)}
@@ -2772,8 +2878,8 @@
     S.favoritos = await DB.favoritos.list(); atualizarListaMedicamentos();
     return faltam.length;
   }
-  const SUGESTOES_VERSAO = 3; // 2 = folhetos de orientação e orçamentos; 3 = livretos do ciclo
-  const NOVOS_POR_VERSAO = { 2: ['orientacao', 'orcamento'], 3: ['livreto'] };
+  const SUGESTOES_VERSAO = 4; // 2 = folhetos e orçamentos; 3 = livretos do ciclo; 4 = protocolos do ciclo
+  const NOVOS_POR_VERSAO = { 2: ['orientacao', 'orcamento'], 3: ['livreto'], 4: ['ciclo'] };
   async function iniciarModelos() {
     if (S.perfil.modelos_iniciados && (S.perfil.sugestoes_versao || 1) < SUGESTOES_VERSAO) {
       try {

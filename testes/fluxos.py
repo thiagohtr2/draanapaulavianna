@@ -120,6 +120,21 @@ async def rodar(b, BASE, W):
     T.check(await pg.locator('#doc-editor .rx-list > li').count() == 7, 'receita montada com as medicações do ciclo', str(await pg.locator('#doc-editor .rx-list > li').count()))
     await pg.click('#doc-editor [data-ed="descartar"]'); await pg.wait_for_timeout(300)
     if await pg.locator('dialog[open] [data-ok]').count(): await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(300)
+    # protocolo padrão do ciclo: salvar, usar com outra data e trocar só o Dia 01
+    await pg.click('#ciclo-corpo [data-cx="padrao-salvar"]'); await pg.wait_for_timeout(300)
+    await pg.fill('#sp-nome', 'Meu protocolo FIV'); await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(700)
+    n = await pg.evaluate("DB.modelos.list().then(l=>l.filter(m=>m.tipo==='ciclo').length)")
+    T.check(n == 2, 'protocolo padrão salvo (além do exemplo sugerido)', str(n))
+    await pg.click('#ciclo-corpo [data-cx="padrao-usar"]'); await pg.wait_for_timeout(400)
+    await pg.click('dialog[open] #em-l [data-id] >> text=Meu protocolo FIV'); await pg.wait_for_timeout(500)
+    if await pg.locator('dialog[open] [data-ok]:has-text("Substituir")').count(): await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(500)
+    await pg.fill('#d01', '2026-12-01'); await pg.click('dialog[open] [data-ok]'); await pg.wait_for_timeout(800)
+    v = await pg.input_value('#cic-cd-0')
+    T.check(v == '2026-12-05', 'protocolo aplicado: controles calculados a partir do Dia 01', v)
+    await pg.fill('#cic-in', '2026-12-03'); await pg.wait_for_timeout(400)
+    v = await pg.input_value('#cic-cd-0'); vp = await pg.input_value('#cic-pd')
+    T.check(v == '2026-12-07' and vp == '2026-12-14', 'trocar só o Dia 01 leva junto controles e punção', f'{v} {vp}')
+    await pg.wait_for_timeout(1500)
     # nova consulta de fertilidade traz o ciclo em andamento
     pac = await pg.evaluate(f"DB.consultas.get('{rasc}').then(c=>c.paciente_id)")
     await pg.goto(BASE + '#paciente-' + pac); await pg.wait_for_timeout(600)
@@ -135,7 +150,7 @@ async def rodar(b, BASE, W):
     await fechar(pg)
 
     # ---- modelos: “Ver PDF”
-    for tm in ['prescricao', 'exames', 'atestado', 'orientacao', 'livreto', 'orcamento']:
+    for tm in ['prescricao', 'exames', 'atestado', 'orientacao', 'ciclo', 'livreto', 'orcamento']:
         await pg.goto(BASE + '#modelos'); await pg.wait_for_timeout(300); await pg.click(f'[data-tm="{tm}"]')
         await pg.click('[data-mid] >> nth=0'); await pg.wait_for_timeout(300); await pg.click('dialog[open] [data-m="prev"]')
         T.check(await pg.locator('dialog[open] iframe, dialog[open] a[download], dialog[open] [data-save]').count() > 0 or bool(await dlg_titulo(pg)), f'“Ver PDF” do modelo ({tm})')
