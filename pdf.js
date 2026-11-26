@@ -949,12 +949,13 @@
     doc.setDrawColor(...C.rose); doc.setLineWidth(0.3); doc.line(M, 21, W - M, 21);
     doc.setDrawColor(...C.gold); doc.setLineWidth(0.9); doc.line(W - M - 30, 21, W - M, 21);
   }
-  function novaPagina(L) { L.doc.addPage(); cabecalhoLivro(L); L.y = L.top; }
+  function novaPagina(L) { L.doc.addPage('a4', 'portrait'); cabecalhoLivro(L); L.y = L.top; }
   function caber(L, h) { if (L.y + h > L.bottom) novaPagina(L); }
   function rodapesLivro(L) {
-    const { doc, W, H, M } = L; const n = doc.getNumberOfPages();
+    const { doc, M } = L; const n = doc.getNumberOfPages();
     for (let i = 2; i <= n; i++) {
       doc.setPage(i);
+      const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
       doc.setDrawColor(...C.hair); doc.setLineWidth(0.25); doc.line(M, H - 13.5, W - M, H - 13.5);
       setF(doc, 'Jost', 7, C.gray); doc.text(doc.splitTextToSize(L.rodape, W - 2 * M - 20)[0] || '', M, H - 8.6);
       setF(doc, 'JostM', 7, C.mauve); doc.text(`${i} / ${n}`, W - M, H - 8.6, { align: 'right' });
@@ -1184,6 +1185,14 @@
     const { doc, M, W } = L; const w = W - 2 * M;
     // o calendário começa na página atual só se couber inteiro; senão, página nova
     if (L.y > L.top + 1 && L.y + 10 + alturaCalendario(N) > L.bottom) novaPagina(L); else if (L.y > L.top + 1) L.y += 10;
+    topoCalendario(L, N);
+    const labW = 46, porFaixa = 7, colW = (w - labW) / porFaixa, headH = 15.5;
+    const { ehGatilho, finaisNoCal, diaProc, diasGatilho } = marcosCalendario(N);
+    calendarioSemanas(L, N, { labW, porFaixa, colW, headH, ehGatilho, finaisNoCal, diaProc, diasGatilho });
+  }
+  // título e faixa com a paciente (formatos em retrato)
+  function topoCalendario(L, N) {
+    const { doc, M, W } = L; const w = W - 2 * M;
     tituloPagina(L, 'Seu calendário de medicações', N.inicio ? 'A cada aplicação feita, marque o círculo. Aplique sempre no mesmo horário e traga este livreto aos controles.' : 'Preencha as datas a partir do primeiro dia da estimulação (Dia 01). A cada aplicação feita, marque o círculo.');
     // faixa com a paciente
     const p = L.paciente; const nome = clean(p.nome_social) || clean(p.nome) || '';
@@ -1201,12 +1210,17 @@
       setF(doc, 'Jost', 9.6, C.ink); doc.text(b, cx + 3.5, L.y + 10.8); cx += larg[i];
     });
     L.y += 20;
-
-    const labW = 46, porFaixa = 7, colW = (w - labW) / porFaixa, headH = 15.5;
+  }
+  // dia do procedimento, dias de gatilho e medicações da reta final que caem no calendário
+  function marcosCalendario(N) {
     const ehGatilho = f => /ovidrel|gonapeptyl|gatilho|hcg|choriomon|triptorrelina|decapeptyl|leuprorrelina/i.test(f.med);
     const finaisNoCal = N.final.filter(f => f.d && N.diaDe(f.d) >= 1 && N.diaDe(f.d) <= N.dias);
     const diaProc = N.procDia ? N.diaDe(N.procDia) : null;
     const diasGatilho = new Set(finaisNoCal.filter(ehGatilho).map(f => N.diaDe(f.d)));
+    return { ehGatilho, finaisNoCal, diaProc, diasGatilho };
+  }
+  function calendarioSemanas(L, N, { labW, porFaixa, colW, headH, finaisNoCal, diaProc, diasGatilho }) {
+    const { doc, M, W } = L; const w = W - 2 * M;
     const linhas = [];
     N.meds.forEach(m => {
       setF(doc, 'JostM', 8.3, C.ink); const nl = doc.splitTextToSize(m.nome, labW - 3).slice(0, 2);
@@ -1292,12 +1306,208 @@
     }
   }
 
+  /* ---------- calendário numa folha só ---------- */
+  // uma linha/coluna por medicação (doses diferentes do mesmo remédio ficam juntas, dia a dia)
+  function medsAgrupadas(N) {
+    const grupos = [];
+    N.meds.forEach(m => {
+      const k = m.nome.toLowerCase(); let g = grupos.find(x => x.k === k);
+      if (!g) grupos.push(g = { k, nome: m.nome, via: m.via, horarios: [], doses: {}, todas: [] });
+      for (let d = m.de; d <= m.ate; d++) g.doses[d] = m.dose;
+      if (m.horario && !g.horarios.includes(m.horario)) g.horarios.push(m.horario);
+      if (!g.todas.includes(m.dose)) g.todas.push(m.dose);
+      if (!g.via) g.via = m.via;
+    });
+    grupos.forEach(g => { g.detalhe = [g.todas.length > 1 ? 'dose varia' : g.todas[0], g.horarios.map(horaDe).join(' e '), (g.via || '').toLowerCase()].filter(Boolean).join(' · '); });
+    return grupos;
+  }
+  function textoCabe(doc, t, x, y, maxW, tamanhos, fam = 'JostM', cor = C.wine2, align = 'center') {
+    for (const tam of tamanhos) { setF(doc, fam, tam, cor); if (doc.getTextWidth(t) <= maxW) { doc.text(t, x, y, { align }); return; } }
+    let s = t; while (s.length > 2 && doc.getTextWidth(s + '…') > maxW) s = s.slice(0, -1); doc.text(s + '…', x, y, { align });
+  }
+  // dose do dia: pílula com o círculo para marcar
+  function pilulaDose(doc, cx, cy, pw, dose) {
+    const ph = 6.2; const t = abreviarDose(dose);
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(...C.rose); doc.setLineWidth(0.25); doc.roundedRect(cx - pw / 2, cy - ph / 2, pw, ph, ph / 2, ph / 2, 'FD');
+    doc.setDrawColor(...C.mauve); doc.setLineWidth(0.25);
+    if (t && pw >= 10) { doc.circle(cx - pw / 2 + 2.3, cy, 1.05, 'S'); textoCabe(doc, t, cx + 1.55, cy + 0.95, pw - 4.9, [6.6, 6, 5.4]); }
+    else doc.circle(cx, cy, 1.45, 'S');
+  }
+  function etiqueta(doc, t, cx, y, maxW, fundo) {
+    setF(doc, 'JostM', 5.4, C.white); const s = t.toUpperCase(); const tw = Math.min(maxW, doc.getTextWidth(s) + 0.4 * (s.length - 1) + 3);
+    doc.setFillColor(...fundo); doc.roundedRect(cx - tw / 2, y, tw, 3.6, 1.8, 1.8, 'F'); tracked(doc, s, cx, y + 2.6, 0.4, { align: 'center' });
+  }
+  const cabePaisagem = N => N.dias <= 18;
+  const alturaLinhas = N => 46 + 16 + N.dias * 10 + 4;
+  const cabeLinhas = N => N.dias <= 24;
+
+  // A) Folha deitada: todos os dias lado a lado, as medicações em linhas
+  function calendarioPaisagem(L, N) {
+    const { doc } = L; const ret = { W: L.W, H: L.H, bottom: L.bottom };
+    doc.addPage('a4', 'landscape'); Object.assign(L, { W: 297, H: 210, bottom: 210 - 17 }); cabecalhoLivro(L);
+    const { W, M } = L; const w = W - 2 * M; let y = L.top - 1;
+    setF(doc, 'CormI', 23, C.wine); doc.text('Seu calendário de medicações', M, y + 7);
+    setF(doc, 'Jost', 8.4, C.gray); doc.text(N.inicio ? 'Marque o círculo a cada aplicação feita. Aplique sempre no mesmo horário e traga este livreto aos controles.' : 'Preencha as datas a partir do Dia 01 e marque o círculo a cada aplicação feita.', M, y + 12.4);
+    const p = L.paciente; const nome = clean(p.nome_social) || clean(p.nome) || '';
+    setF(doc, 'CormSB', 13.5, C.ink); doc.text(nome, W - M, y + 6.4, { align: 'right' });
+    setF(doc, 'Jost', 8, C.gray); doc.text([N.protocolo, N.inicio ? `Dia 01: ${diaCurto(N.inicio)}/${N.inicio.getFullYear()}` : '', N.nhc ? `Prontuário ${N.nhc}` : ''].filter(Boolean).join('  ·  '), W - M, y + 11.6, { align: 'right' });
+    y += 17;
+    const { finaisNoCal, diaProc, diasGatilho } = marcosCalendario(N);
+    const grupos = medsAgrupadas(N);
+    const labW = 38, colW = (w - labW) / N.dias, headH = 15;
+    const linhas = grupos.map(g => {
+      setF(doc, 'JostM', 8.2, C.ink); const nl = doc.splitTextToSize(g.nome, labW - 3).slice(0, 2);
+      setF(doc, 'Jost', 6.5, C.gray); const dl = doc.splitTextToSize(g.detalhe, labW - 3).slice(0, 2);
+      return { tipo: 'med', g, nl, dl, h: Math.max(9.6, nl.length * 3.3 + dl.length * 2.8 + 3.4) };
+    });
+    if (!grupos.length) for (let i = 0; i < 4; i++) linhas.push({ tipo: 'vazia', h: 10 });
+    if (finaisNoCal.length) linhas.push({ tipo: 'final', h: 10.5 });
+    linhas.push({ tipo: 'us', h: 9.2 }, { tipo: 'sangue', h: 9.2 }, { tipo: 'vazia', h: 8 });
+    // os próximos controles cabem embaixo da tabela? as linhas se ajustam ao espaço que sobra
+    const faixaH = 28; let corpo = linhas.reduce((a, l) => a + l.h, 0);
+    const comControles = L.bottom - y - headH - corpo - 2 >= faixaH;
+    const livre = L.bottom - y - headH - 2 - (comControles ? faixaH : 0);
+    const f = Math.min(1.3, livre / corpo); linhas.forEach(l => { l.h *= f; }); corpo *= f;
+    const bh = headH + corpo;
+    for (let d = 1; d <= N.dias; d++) {
+      const x = M + labW + (d - 1) * colW, cx = x + colW / 2, ehProc = d === diaProc;
+      doc.setFillColor(...(ehProc ? LV.cobreBg : (d % 2 ? LV.band1 : LV.band2))); doc.roundedRect(x + 0.5, y, colW - 1, bh, 2.2, 2.2, 'F');
+      if (ehProc) { doc.setFillColor(...C.wine); doc.roundedRect(x + 0.5, y, colW - 1, headH - 1, 2.2, 2.2, 'F'); }
+      setF(doc, 'JostM', 7.8, ehProc ? C.white : C.wine); doc.text(`Dia ${pad2(d)}`, cx, y + 4.9, { align: 'center' });
+      const dt = N.inicio ? somaDias(N.inicio, d - 1) : null;
+      textoCabe(doc, dt ? `${SEM[dt.getDay()]} ${ddmm(dt)}` : '___/___', cx, y + 8.6, colW - 1.6, [6.5, 5.9], 'Jost', ehProc ? C.rose : C.gray);
+      const tag = ehProc ? (clean((L.T.procedimento || {}).rotulo) || 'Procedimento') : diasGatilho.has(d) ? 'Gatilho' : '';
+      if (tag) etiqueta(doc, tag, cx, y + 10, colW - 1.8, ehProc ? C.gold : C.goldDark);
+    }
+    setF(doc, 'JostM', 6.6, C.wine); tracked(doc, 'MEDICAÇÃO', M + 1, y + headH - 3.2, 0.9);
+    let yy = y + headH;
+    const sep = yl => { doc.setDrawColor(...LV.linha); doc.setLineWidth(0.25); doc.line(M, yl, W - M, yl); };
+    const cxDia = d => M + labW + (d - 1) * colW + colW / 2;
+    const porDia = {}; finaisNoCal.forEach(fi => { const d = N.diaDe(fi.d); (porDia[d] = porDia[d] || []).push(fi); });
+    linhas.forEach(ln => {
+      sep(yy); const meio = yy + ln.h / 2;
+      if (ln.tipo === 'med') {
+        const t0 = meio - (ln.nl.length * 3.3 + ln.dl.length * 2.8) / 2 + 2.6;
+        setF(doc, 'JostM', 8.2, C.ink); ln.nl.forEach((t, i) => doc.text(t, M + 1, t0 + i * 3.3));
+        setF(doc, 'Jost', 6.5, C.gray); ln.dl.forEach((t, i) => doc.text(t, M + 1, t0 + ln.nl.length * 3.3 + i * 2.8));
+        for (let d = 1; d <= N.dias; d++) if (ln.g.doses[d] !== undefined) pilulaDose(doc, cxDia(d), meio, Math.min(colW - 2.4, 17), ln.g.doses[d]);
+      } else if (ln.tipo === 'us' || ln.tipo === 'sangue') {
+        setF(doc, 'JostM', 6.6, C.wine2); tracked(doc, ln.tipo === 'us' ? 'ULTRASSOM' : 'EXAME DE SANGUE', M + 1, meio + 1, 0.6);
+        N.controles.filter(c => ln.tipo === 'us' ? c.us : c.sangue).forEach(c => {
+          const d = N.diaDe(c.d); if (d == null || d < 1 || d > N.dias) return;
+          desenharIcone(doc, ln.tipo === 'us' ? 'ultrassom' : 'exames', cxDia(d), meio - 1.6, 4.2, C.wine2, 1.8);
+          setF(doc, 'JostM', 6.1, C.wine2); doc.text(horaDe(c.hora) || '', cxDia(d), meio + 3.4, { align: 'center' });
+        });
+      } else if (ln.tipo === 'final') {
+        setF(doc, 'JostM', 6.6, C.wine2); tracked(doc, 'RETA FINAL', M + 1, meio + 1, 0.6);
+        Object.keys(porDia).forEach(k => {
+          const d = +k, arr = porDia[d].slice(0, 2);
+          arr.forEach((fi, i) => textoCabe(doc, `${horaDe(fi.hora) || '__h__'} ${fi.med.split(/[\s(]/)[0]}`, cxDia(d), meio + (arr.length === 1 ? 1 : -1 + i * 3.8), colW - 1.4, [5.9, 5.4, 5]));
+        });
+      }
+      yy += ln.h;
+    });
+    sep(yy);
+    if (comControles) { controlesFaixa(L, N, M, yy + 6, w); L.controlesNaFolha = true; }
+    Object.assign(L, ret); L.y = L.bottom + 1; // o que vem depois começa numa página em pé
+  }
+
+  // próximos controles em uma faixa de 6 quadros (folha deitada)
+  function controlesFaixa(L, N, x, y, w) {
+    const { doc } = L; const n = 6, gap = 3, bw = (w - gap * (n - 1)) / n, h = 16;
+    setF(doc, 'JostM', 7, C.goldDark); tracked(doc, 'PRÓXIMOS CONTROLES', x, y + 2.6, 1);
+    y += 5;
+    for (let i = 0; i < n; i++) {
+      const bx = x + i * (bw + gap), c = N.controles[i];
+      doc.setFillColor(...C.blush); doc.setDrawColor(...C.blush2); doc.setLineWidth(0.3); doc.roundedRect(bx, y, bw, h, 2.4, 2.4, 'FD');
+      doc.setFillColor(...C.gold); doc.circle(bx + 5, y + 5.4, 2.4, 'F');
+      setF(doc, 'JostM', 6.3, C.white); doc.text(pad2(i + 1), bx + 5, y + 6.3, { align: 'center' });
+      if (c) {
+        textoCabe(doc, `${diaCurto(c.d)}${c.hora ? ' · ' + horaDe(c.hora) : ''}`, bx + 9, y + 6.5, bw - 10.5, [8.2, 7.4, 6.8], 'JostM', C.ink, 'left');
+        const o = [c.us ? 'ultrassom' : '', c.sangue ? 'exame de sangue' : ''].filter(Boolean).join(' e ');
+        if (o) textoCabe(doc, o, bx + 9, y + 11.6, bw - 10.5, [7, 6.4, 5.8], 'Jost', C.gray, 'left');
+      } else {
+        doc.setDrawColor(...C.rose); doc.setLineWidth(0.25);
+        setF(doc, 'Jost', 7, C.gray); doc.text('/', bx + 16.3, y + 6.5); doc.text('às', bx + 23.5, y + 6.5); doc.text('h', bx + 33.4, y + 6.5);
+        doc.line(bx + 9, y + 7.1, bx + 15.6, y + 7.1); doc.line(bx + 17.6, y + 7.1, bx + 22.6, y + 7.1); doc.line(bx + 27, y + 7.1, bx + 32.6, y + 7.1); doc.line(bx + 35, y + 7.1, bx + Math.min(bw - 2, 40), y + 7.1);
+        doc.line(bx + 9, y + 12.4, bx + bw - 3, y + 12.4);
+      }
+    }
+  }
+  const viaCurta = v => ({ 'subcutânea': 'subcut.', 'subcutâneo': 'subcut.', intramuscular: 'IM', 'transdérmica': 'transd.' }[String(v || '').toLowerCase()] || String(v || '').toLowerCase());
+
+  // B) Folha em pé: um dia por linha, as medicações em colunas
+  function calendarioLinhas(L, N) {
+    const { doc, M, W } = L; const w = W - 2 * M;
+    if (L.y > L.top + 1 && L.y + 10 + alturaLinhas(N) > L.bottom) novaPagina(L); else if (L.y > L.top + 1) L.y += 10;
+    topoCalendario(L, N);
+    const { finaisNoCal, diaProc, diasGatilho } = marcosCalendario(N);
+    const grupos = medsAgrupadas(N);
+    const cols = [{ tipo: 'dia', w: 27 }];
+    const medsCols = grupos.length ? grupos.map(g => ({ tipo: 'med', g })) : [0, 1, 2].map(() => ({ tipo: 'medvazia' }));
+    const fixos = 27 + 17 + 17 + (finaisNoCal.length ? 25 : 0);
+    let medW = Math.min(26, Math.max(16, (w - fixos - 22) / medsCols.length));
+    let notasW = w - fixos - medW * medsCols.length;
+    if (notasW < 14) { medW = (w - fixos - 14) / medsCols.length; notasW = 14; }
+    medsCols.forEach(c => { c.w = medW; cols.push(c); });
+    if (finaisNoCal.length) cols.push({ tipo: 'final', w: 25 });
+    cols.push({ tipo: 'us', w: 17 }, { tipo: 'sangue', w: 17 }, { tipo: 'notas', w: notasW });
+    let x = M; cols.forEach(c => { c.x = x; c.cx = x + c.w / 2; x += c.w; });
+    const headH = 18, y0 = L.y;
+    const rowH = Math.max(8, Math.min(11.5, (L.bottom - y0 - headH - 3) / N.dias));
+    // cabeçalho das colunas
+    cols.forEach(c => {
+      const cab = (l1, l2) => { setF(doc, 'JostM', 6.3, C.wine); tracked(doc, l1, c.cx, y0 + (l2 ? 10.2 : 13.4), 0.4, { align: 'center' }); if (l2) tracked(doc, l2, c.cx, y0 + 13.4, 0.4, { align: 'center' }); };
+      if (c.tipo === 'dia') { setF(doc, 'JostM', 6.3, C.wine); tracked(doc, 'DIA', c.x + 2, y0 + 13.4, 0.9); }
+      else if (c.tipo === 'med') {
+        setF(doc, 'JostM', 8, C.ink); const nl = doc.splitTextToSize(c.g.nome, c.w - 2).slice(0, 2);
+        nl.forEach((t, i) => doc.text(t, c.cx, y0 + (nl.length === 1 ? 6.2 : 3.6) + i * 3.2, { align: 'center' }));
+        textoCabe(doc, c.g.todas.length > 1 ? 'dose varia' : (c.g.todas[0] || ''), c.cx, y0 + 10.4, c.w - 1.6, [6.4, 5.8, 5.3], 'JostM', C.wine2);
+        textoCabe(doc, [c.g.horarios.map(horaDe).join(' e '), viaCurta(c.g.via)].filter(Boolean).join(' · '), c.cx, y0 + 13.6, c.w - 1.6, [6, 5.5, 5], 'Jost', C.gray);
+      } else if (c.tipo === 'medvazia') { doc.setDrawColor(...C.rose); doc.setLineWidth(0.25); doc.line(c.x + 2.5, y0 + 13.4, c.x + c.w - 2.5, y0 + 13.4); }
+      else if (c.tipo === 'final') cab('RETA', 'FINAL');
+      else if (c.tipo === 'us') cab('ULTRASSOM');
+      else if (c.tipo === 'sangue') cab('EXAME DE', 'SANGUE');
+      else cab('ANOTAÇÕES');
+    });
+    doc.setDrawColor(...C.wine); doc.setLineWidth(0.5); doc.line(M, y0 + headH - 1, W - M, y0 + headH - 1);
+    const porDia = {}; finaisNoCal.forEach(fi => { const d = N.diaDe(fi.d); (porDia[d] = porDia[d] || []).push(fi); });
+    let yy = y0 + headH;
+    for (let d = 1; d <= N.dias; d++) {
+      const ehProc = d === diaProc, meio = yy + rowH / 2;
+      doc.setFillColor(...(ehProc ? LV.cobreBg : (d % 2 ? LV.band1 : [255, 255, 255]))); doc.roundedRect(M, yy + 0.3, w, rowH - 0.6, 2, 2, 'F');
+      if (ehProc) { doc.setFillColor(...C.wine); doc.roundedRect(M, yy + 0.3, 27, rowH - 0.6, 2, 2, 'F'); }
+      // dia: número, data e etiqueta (gatilho / procedimento)
+      const dt = N.inicio ? somaDias(N.inicio, d - 1) : null;
+      setF(doc, 'JostM', 8.4, ehProc ? C.white : C.wine); doc.text(`Dia ${pad2(d)}`, M + 2.2, meio - 0.3);
+      setF(doc, 'Jost', 6.6, ehProc ? C.rose : C.gray); doc.text(dt ? diaCurto(dt) : '___/___', M + 2.2, meio + 3);
+      const tag = ehProc ? (clean((L.T.procedimento || {}).rotulo) || 'Procedimento') : diasGatilho.has(d) ? 'Gatilho' : '';
+      if (tag) etiqueta(doc, tag, M + 20.5, meio - 3.3, 12, ehProc ? C.gold : C.goldDark);
+      cols.forEach(c => {
+        if (c.tipo === 'med' && c.g.doses[d] !== undefined) pilulaDose(doc, c.cx, meio, Math.min(c.w - 3, 18), c.g.doses[d]);
+        else if (c.tipo === 'us' || c.tipo === 'sangue') {
+          const ct = N.controles.find(k => N.diaDe(k.d) === d && (c.tipo === 'us' ? k.us : k.sangue)); if (!ct) return;
+          desenharIcone(doc, c.tipo === 'us' ? 'ultrassom' : 'exames', c.cx - 4.2, meio, 4, C.wine2, 1.8);
+          setF(doc, 'JostM', 6.2, C.wine2); doc.text(horaDe(ct.hora) || '', c.cx - 1.6, meio + 1);
+        } else if (c.tipo === 'final' && porDia[d]) {
+          const arr = porDia[d].slice(0, 2);
+          arr.forEach((fi, i) => textoCabe(doc, `${horaDe(fi.hora) || '__h__'} ${fi.med.split(/[\s(]/)[0]}`, c.cx, meio + (arr.length === 1 ? 1 : -1.2 + i * 3.6), c.w - 1.6, [6.2, 5.6, 5.1]));
+        }
+      });
+      // divisórias das colunas
+      doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.6);
+      cols.slice(1).forEach(c => doc.line(c.x, yy + 0.3, c.x, yy + rowH - 0.3));
+      yy += rowH;
+    }
+    L.y = yy + 6;
+  }
+
   // Medicações compradas (para a paciente anotar) e próximos controles
   function controlesLivro(L, N) {
-    const { doc, M, W } = L; const gap = 5; const cw = (W - 2 * M - gap) / 2; const h = 64;
+    const { doc, M, W } = L; const gap = 5; const so = !!L.controlesNaFolha; const cw = so ? W - 2 * M : (W - 2 * M - gap) / 2; const h = so ? 58 : 64;
     caber(L, h + 4);
     const y = L.y;
-    [[M, 'Medicações compradas'], [M + cw + gap, 'Próximos controles']].forEach(([x, t]) => {
+    (so ? [[M, 'Medicações compradas']] : [[M, 'Medicações compradas'], [M + cw + gap, 'Próximos controles']]).forEach(([x, t]) => {
       doc.setFillColor(...C.blush); doc.setDrawColor(...C.blush2); doc.setLineWidth(0.35); doc.roundedRect(x, y, cw, h, 3.5, 3.5, 'FD');
       setF(doc, 'CormSB', 13, C.wine); doc.text(t, x + 5, y + 8.4);
     });
@@ -1310,7 +1520,7 @@
     }
     // controles: até 6, numerados
     const x2 = M + cw + gap;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < (so ? 0 : 6); i++) {
       const yl = y + 18.5 + i * 7.6; const c = N.controles[i];
       doc.setFillColor(...C.gold); doc.circle(x2 + 7.2, yl - 1.2, 2.5, 'F');
       setF(doc, 'JostM', 6.6, C.white); doc.text(pad2(i + 1), x2 + 7.2, yl - 0.25, { align: 'center' });
@@ -1501,9 +1711,14 @@
     const cards = (T.cuidados || []).filter(c => clean(c.titulo) || clean(c.texto));
     if (cards.length) { rotuloSecao(L, 'Cuidados durante o tratamento'); L.y += 1.5; cuidadosLivro(L, cards); }
     if (clean(T.suspensao)) { L.y += 2; suspensaoLivro(L, T.suspensao); }
+    // formato do calendário: 'semanas' (faixas de 7 dias), 'paisagem' (folha deitada) ou 'linhas' (um dia por linha)
+    let formato = clean((dados.ciclo || {}).calendario) || clean(T.calendario) || 'semanas';
+    if ((formato === 'paisagem' && !cabePaisagem(N)) || (formato === 'linhas' && !cabeLinhas(N))) formato = 'semanas';
+    const desenharCal = { semanas: calendarioLivro, paisagem: calendarioPaisagem, linhas: calendarioLinhas }[formato] || calendarioLivro;
+    const altCal = formato === 'semanas' ? alturaCalendario(N) : formato === 'linhas' ? alturaLinhas(N) : Infinity;
     // se o calendário não cabe no resto da página e sobra bastante espaço, controles e contatos vêm antes
-    if (L.y > L.top + 1 && L.y + 10 + alturaCalendario(N) > L.bottom && L.bottom - L.y > 150) { L.y += 4; controlesLivro(L, N); contatosLivro(L, N); calendarioLivro(L, N); }
-    else { calendarioLivro(L, N); controlesLivro(L, N); contatosLivro(L, N); }
+    if (L.y > L.top + 1 && L.y + 10 + altCal > L.bottom && L.bottom - L.y > 150) { L.y += 4; controlesLivro(L, N); contatosLivro(L, N); desenharCal(L, N); }
+    else { desenharCal(L, N); controlesLivro(L, N); contatosLivro(L, N); }
     const P = T.procedimento || {};
     if (clean(P.titulo) || N.final.length || N.proc) procedimentoLivro(L, N);
     encerramentoLivro(L);
