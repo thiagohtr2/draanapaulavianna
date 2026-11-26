@@ -383,12 +383,12 @@ revoke all on public.envios from anon;
 
 -- =====================================================================
 --  v4 — folhetos de orientação, orçamentos e assinatura digital
---  (as listas de tipos já incluem os do v7, para o arquivo rodar de novo
+--  (as listas de tipos já incluem os do v7 e v8, para o arquivo rodar de novo
 --   sem erro num banco que já tenha livretos)
 -- =====================================================================
 alter table public.modelos drop constraint if exists modelos_tipo_check;
 alter table public.modelos add constraint modelos_tipo_check
-  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto'));
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto','ciclo'));
 alter table public.documentos drop constraint if exists documentos_tipo_check;
 alter table public.documentos add constraint documentos_tipo_check
   check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento','livreto'));
@@ -457,7 +457,15 @@ alter table public.consultas add column if not exists valor   numeric(10,2) chec
 -- =====================================================================
 alter table public.modelos drop constraint if exists modelos_tipo_check;
 alter table public.modelos add constraint modelos_tipo_check
-  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto'));
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto','ciclo'));
 alter table public.documentos drop constraint if exists documentos_tipo_check;
 alter table public.documentos add constraint documentos_tipo_check
   check (tipo in ('receita','exames','atestado','orientacoes','registro','orcamento','livreto'));
+-- =====================================================================
+--  v8 — protocolos padrão do ciclo (fertilidade): modelos do tipo 'ciclo',
+--  com medicações, controles, reta final e procedimento contados em dias a
+--  partir do Dia 01. (As listas do v4 e do v7 acima já incluem 'ciclo'.)
+-- =====================================================================
+alter table public.modelos drop constraint if exists modelos_tipo_check;
+alter table public.modelos add constraint modelos_tipo_check
+  check (tipo in ('prescricao','exames','atestado','texto','orientacao','orcamento','livreto','ciclo'));
